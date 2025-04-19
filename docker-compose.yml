@@ -1,0 +1,14 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: API
+      dockerfile: Dockerfile
+    ports:
+      - "8000:80"
+    volumes:
+      - ./API:/app
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
