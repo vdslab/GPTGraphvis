@@ -1,10 +1,30 @@
-from fastapi import FastAPI, HTTPException
+import os
+from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
 import networkx as nx
 import numpy as np
+from dotenv import load_dotenv
 
-app = FastAPI()
+from database import engine, Base
+from routers import auth, chatgpt
+import models
+
+# Load environment variables
+load_dotenv()
+
+# Create database tables
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(
+    title="Network Layout API with Authentication",
+    description="API for network layout calculation with user authentication and ChatGPT integration",
+    version="0.1.0"
+)
+
+# Include routers
+app.include_router(auth.router)
+app.include_router(chatgpt.router)
 
 class Node(BaseModel):
     id: str
@@ -17,7 +37,8 @@ class Edge(BaseModel):
 class NetworkRequest(BaseModel):
     nodes: List[Node]
     edges: List[Edge]
-    layout: str = "spring"  # spring, circular, random, spectral
+    layout: str = "spring"  # レイアウトアルゴリズム名
+    layout_params: Optional[Dict[str, Any]] = None  # レイアウトアルゴリズムのパラメータ
 
 class NodePosition(BaseModel):
     id: str
@@ -29,17 +50,39 @@ class NetworkResponse(BaseModel):
     nodes: List[NodePosition]
     edges: List[Edge]
 
-def apply_layout(G: nx.Graph, layout_type: str) -> Dict[Any, np.ndarray]:
-    if layout_type == "spring":
-        return nx.spring_layout(G)
-    elif layout_type == "circular":
-        return nx.circular_layout(G)
-    elif layout_type == "random":
-        return nx.random_layout(G)
-    elif layout_type == "spectral":
-        return nx.spectral_layout(G)
+def apply_layout(G: nx.Graph, layout_type: str, **kwargs) -> Dict[Any, np.ndarray]:
+    """
+    指定されたレイアウトアルゴリズムを適用してノードの位置を計算します。
+    
+    Args:
+        G: NetworkXグラフ
+        layout_type: レイアウトアルゴリズムの名前
+        **kwargs: レイアウトアルゴリズムに渡す追加パラメータ
+        
+    Returns:
+        ノードIDをキー、位置座標を値とする辞書
+    """
+    layout_functions = {
+        "spring": nx.spring_layout,
+        "circular": nx.circular_layout,
+        "random": nx.random_layout,
+        "spectral": nx.spectral_layout,
+        "shell": nx.shell_layout,
+        "spiral": nx.spiral_layout,
+        "kamada_kawai": nx.kamada_kawai_layout,
+        "fruchterman_reingold": nx.fruchterman_reingold_layout,
+        "bipartite": nx.bipartite_layout,
+        "multipartite": nx.multipartite_layout
+    }
+    
+    # 平面グラフの場合のみ使用可能
+    if layout_type == "planar" and nx.is_planar(G):
+        return nx.planar_layout(G, **kwargs)
+    
+    if layout_type in layout_functions:
+        return layout_functions[layout_type](G, **kwargs)
     else:
-        raise ValueError(f"Unsupported layout type: {layout_type}")
+        raise ValueError(f"Unsupported layout type: {layout_type}. Supported types: {', '.join(layout_functions.keys())}")
 
 @app.post("/network/layout", response_model=NetworkResponse)
 async def calculate_layout(request: NetworkRequest):
@@ -55,8 +98,9 @@ async def calculate_layout(request: NetworkRequest):
         for edge in request.edges:
             G.add_edge(edge.source, edge.target)
             
-        # Calculate layout
-        pos = apply_layout(G, request.layout)
+        # Calculate layout with parameters if provided
+        layout_params = request.layout_params or {}
+        pos = apply_layout(G, request.layout, **layout_params)
         
         # Prepare response
         nodes_with_positions = [

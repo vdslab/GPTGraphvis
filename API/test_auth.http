@@ -1,0 +1,29 @@
+### Register a new user
+POST http://localhost:8000/auth/register
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "password": "password123"
+}
+
+### Get access token
+POST http://localhost:8000/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username=testuser&password=password123
+
+### Get current user info
+GET http://localhost:8000/auth/users/me
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...  # Replace with your token
+
+### Generate ChatGPT response
+POST http://localhost:8000/chatgpt/generate
+Content-Type: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...  # Replace with your token
+
+{
+  "prompt": "Hello, ChatGPT!",
+  "max_tokens": 500,
+  "temperature": 0.7
+}
