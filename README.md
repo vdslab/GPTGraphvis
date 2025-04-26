@@ -1,12 +1,13 @@
-# Network Layout API with Authentication
+# Network Layout Application with Authentication
 
-グラフのレイアウト計算とユーザー認証機能を備えたAPIサービス
+グラフのレイアウト計算とユーザー認証機能を備えたWebアプリケーション
 
 ## 機能
 
 - グラフのレイアウト計算（spring, circular, random, spectral）
 - ユーザー認証（OAuth2 + JWT + PostgreSQL）
 - ChatGPT連携（認証保護）
+- Reactフロントエンド
 
 ## 始め方
 
@@ -29,10 +30,16 @@ OPENAI_API_KEY=your_openai_api_key_here  # 実際のAPIキーに置き換えて�
 2. アプリケーションを起動します：
 
 ```zsh
+# 開発環境（ホットリロード有効）
 docker compose up --build
+
+# 本番環境
+docker compose -f docker-compose.prod.yml up --build
 ```
 
-3. APIは http://localhost:8000 で利用可能になります
+3. アプリケーションにアクセスする：
+   - フロントエンド: http://localhost:3000
+   - バックエンドAPI: http://localhost:8000
 
 ## 認証の使い方
 

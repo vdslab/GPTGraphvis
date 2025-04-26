@@ -2,7 +2,7 @@ services:
   frontend:
     build:
       context: frontend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     restart: unless-stopped
@@ -17,8 +17,6 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8000:80"
-    volumes:
-      - ./API:/app
     restart: unless-stopped
     environment:
       - LOG_LEVEL=info
