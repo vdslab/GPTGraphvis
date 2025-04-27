@@ -10,6 +10,13 @@ export default defineConfig({
     watch: {
       usePolling: true,
     },
+    hmr: {
+      // HMRの設定を追加
+      host: 'localhost',
+      port: 3000,
+      protocol: 'ws',
+      clientPort: 3000 // クライアント側のポート
+    },
     // Removed proxy configuration as we're connecting directly to the API
   },
 });
