@@ -1,0 +1,107 @@
+{
+  "servers": [
+    {
+      "name": "network-visualization-mcp",
+      "url": "http://localhost:8000/mcp",
+      "description": "MCP server for network visualization",
+      "tools": [
+        {
+          "name": "change_layout",
+          "description": "Change the layout algorithm for the network visualization",
+          "parameters": {
+            "layout_type": {
+              "type": "string",
+              "description": "Type of layout algorithm",
+              "enum": [
+                "spring", "circular", "random", "spectral", "shell", 
+                "spiral", "kamada_kawai", "fruchterman_reingold", 
+                "bipartite", "multipartite", "planar"
+              ]
+            },
+            "layout_params": {
+              "type": "object",
+              "description": "Parameters for the layout algorithm"
+            }
+          },
+          "required": ["layout_type"]
+        },
+        {
+          "name": "calculate_centrality",
+          "description": "Calculate centrality metrics for nodes in the graph",
+          "parameters": {
+            "centrality_type": {
+              "type": "string",
+              "description": "Type of centrality to calculate",
+              "enum": ["degree", "closeness", "betweenness", "eigenvector", "pagerank"]
+            }
+          },
+          "required": ["centrality_type"]
+        },
+        {
+          "name": "highlight_nodes",
+          "description": "Highlight specific nodes in the network",
+          "parameters": {
+            "node_ids": {
+              "type": "array",
+              "description": "List of node IDs to highlight",
+              "items": {
+                "type": "string"
+              }
+            },
+            "highlight_color": {
+              "type": "string",
+              "description": "Color to use for highlighting"
+            }
+          },
+          "required": ["node_ids"]
+        },
+        {
+          "name": "change_visual_properties",
+          "description": "Change visual properties of nodes or edges",
+          "parameters": {
+            "property_type": {
+              "type": "string",
+              "description": "Type of property to change",
+              "enum": ["node_size", "node_color", "edge_width", "edge_color"]
+            },
+            "property_value": {
+              "type": "string",
+              "description": "Value to set for the property"
+            },
+            "property_mapping": {
+              "type": "object",
+              "description": "Optional mapping of node/edge IDs to property values"
+            }
+          },
+          "required": ["property_type", "property_value"]
+        },
+        {
+          "name": "get_network_info",
+          "description": "Get information about the current network",
+          "parameters": {}
+        },
+        {
+          "name": "get_node_info",
+          "description": "Get information about specific nodes in the network",
+          "parameters": {
+            "node_ids": {
+              "type": "array",
+              "description": "List of node IDs to get information for",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["node_ids"]
+        }
+      ],
+      "resources": [
+        {
+          "name": "network",
+          "description": "Current network data including nodes and edges",
+          "uri": "/resources/network"
+        }
+      ]
+    }
+  ]
+}

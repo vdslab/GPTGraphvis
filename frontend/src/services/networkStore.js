@@ -115,8 +115,10 @@ const useNetworkStore = create((set, get) => ({
   loadSampleNetwork: async () => {
     set({ isLoading: true, error: null });
     try {
+      console.log("Attempting to load sample network");
       const response = await networkChatAPI.getSampleNetwork();
       
+      console.log("Sample network loaded successfully:", response.data);
       set({ 
         nodes: response.data.nodes,
         edges: response.data.edges,
@@ -127,9 +129,17 @@ const useNetworkStore = create((set, get) => ({
       // Calculate layout for the sample network
       return get().calculateLayout();
     } catch (error) {
+      console.error("Failed to load sample network:", error);
+      const errorMessage = error.response?.data?.detail || 'Failed to load sample network';
+      
+      // Check if it's an authentication error
+      if (error.response?.status === 401) {
+        console.error("Authentication error when loading sample network");
+      }
+      
       set({ 
         isLoading: false, 
-        error: error.response?.data?.detail || 'Failed to load sample network'
+        error: errorMessage
       });
       return false;
     }

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from database import engine, Base
 from routers import auth, chatgpt, network_chat
 import models
+from mcp_server import app as mcp_app
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +37,9 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(chatgpt.router)
 app.include_router(network_chat.router)
+
+# Mount MCP server
+app.mount("/mcp", mcp_app)
 
 class Node(BaseModel):
     id: str
