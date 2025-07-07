@@ -59,3 +59,14 @@ export const chatgptAPI = {
       temperature,
     }),
 };
+
+// Network Chat API
+export const networkChatAPI = {
+  sendMessage: (message, history) =>
+    axios.post(`${API_URL}/network-chat/chat`, {
+      message,
+      history
+    }),
+  getSampleNetwork: () =>
+    axios.post(`${API_URL}/network-chat/network`)
+};

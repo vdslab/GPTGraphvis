@@ -12,7 +12,7 @@ const HomePage = () => {
             Network Visualization API
           </h1>
           <p className="mt-5 max-w-xl mx-auto text-xl text-gray-500">
-            Visualize network data with various layout algorithms and get recommendations for the best layout.
+            Visualize network data with various layout algorithms and interact through a chat interface to analyze your networks.
           </p>
           <div className="mt-8 flex justify-center">
             {isAuthenticated ? (
@@ -38,7 +38,7 @@ const HomePage = () => {
         </div>
 
         <div className="mt-16">
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
             <div className="bg-gray-50 p-6 rounded-lg shadow-md">
               <div className="text-center">
                 <h3 className="text-lg font-medium text-gray-900">Network Visualization</h3>
@@ -53,6 +53,15 @@ const HomePage = () => {
                 <h3 className="text-lg font-medium text-gray-900">Layout Recommendation</h3>
                 <p className="mt-2 text-base text-gray-500">
                   Get recommendations for the best layout algorithm based on your network characteristics.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-gray-50 p-6 rounded-lg shadow-md">
+              <div className="text-center">
+                <h3 className="text-lg font-medium text-gray-900">Network Chat</h3>
+                <p className="mt-2 text-base text-gray-500">
+                  Interact with your network through a chat interface to modify layouts and analyze properties.
                 </p>
               </div>
             </div>

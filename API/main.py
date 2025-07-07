@@ -8,7 +8,7 @@ import numpy as np
 from dotenv import load_dotenv
 
 from database import engine, Base
-from routers import auth, chatgpt
+from routers import auth, chatgpt, network_chat
 import models
 
 # Load environment variables
@@ -35,6 +35,7 @@ app.add_middleware(
 # Include routers
 app.include_router(auth.router)
 app.include_router(chatgpt.router)
+app.include_router(network_chat.router)
 
 class Node(BaseModel):
     id: str

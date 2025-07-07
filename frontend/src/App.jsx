@@ -8,6 +8,7 @@ import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import NetworkVisualizationPage from './pages/NetworkVisualizationPage';
 import LayoutRecommendationPage from './pages/LayoutRecommendationPage';
+import NetworkChatPage from './pages/NetworkChatPage';
 import useAuthStore from './services/authStore';
 
 function App() {
@@ -48,6 +49,14 @@ function App() {
               element={
                 <ProtectedRoute>
                   <LayoutRecommendationPage />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/chat" 
+              element={
+                <ProtectedRoute>
+                  <NetworkChatPage />
                 </ProtectedRoute>
               } 
             />
