@@ -11,8 +11,8 @@ const LoginPage = () => {
   
   const { register, handleSubmit, formState: { errors } } = useForm();
   
-  // Get the return URL from location state or default to dashboard
-  const from = location.state?.from?.pathname || '/dashboard';
+  // Get the return URL from location state or default to chat page
+  const from = location.state?.from?.pathname || '/chat';
   
   const onSubmit = async (data) => {
     setLoginError(null);

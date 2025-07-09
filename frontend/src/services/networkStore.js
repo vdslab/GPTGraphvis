@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { networkAPI, networkChatAPI } from './api';
+import mcpClient from './mcpClient';
 
 // Helper function to generate colors based on centrality values
 const getCentralityColor = (value, maxValue) => {
@@ -208,6 +209,51 @@ const useNetworkStore = create((set, get) => ({
       recommendation: null,
       error: null
     });
+  },
+  
+  // Upload network file
+  uploadNetworkFile: async (file) => {
+    set({ isLoading: true, error: null });
+    try {
+      console.log("Uploading network file:", file.name);
+      
+      // Upload file to API
+      const response = await networkChatAPI.uploadNetworkFile(file);
+      console.log("Network file uploaded successfully:", response.data);
+      
+      // Update network store with data from response
+      set({ 
+        nodes: response.data.nodes,
+        edges: response.data.edges,
+        isLoading: false,
+        error: null
+      });
+      
+      // Update MCP server with the new network data
+      try {
+        // Notify MCP server about the new network data
+        await mcpClient.useTool('update_network', {
+          nodes: response.data.nodes,
+          edges: response.data.edges
+        });
+        console.log("MCP server updated with new network data");
+      } catch (mcpError) {
+        console.error("Error updating MCP server:", mcpError);
+        // Continue even if MCP update fails
+      }
+      
+      // Calculate layout for the uploaded network
+      return get().calculateLayout();
+    } catch (error) {
+      console.error("Failed to upload network file:", error);
+      const errorMessage = error.response?.data?.detail || 'Failed to upload network file';
+      
+      set({ 
+        isLoading: false, 
+        error: errorMessage
+      });
+      return false;
+    }
   }
 }));
 

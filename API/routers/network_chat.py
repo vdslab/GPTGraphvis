@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Dict, Optional, Any
 import networkx as nx
 import json
 import os
+import io
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
@@ -529,4 +530,120 @@ async def create_sample_network(
         raise HTTPException(
             status_code=500,
             detail=f"Error creating sample network: {str(e)}"
+        )
+
+@router.post("/upload-network", response_model=NetworkData)
+async def upload_network_file(
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload a network file and process it using NetworkX.
+    Supports various formats: GraphML, GEXF, GML, JSON, Pajek, EdgeList, AdjList.
+    """
+    try:
+        print(f"Received file upload: {file.filename}")
+        
+        # Get file extension
+        file_extension = os.path.splitext(file.filename)[1].lower()
+        print(f"File extension: {file_extension}")
+        
+        # Read file content
+        content = await file.read()
+        
+        # Create a graph based on file format
+        G = None
+        
+        try:
+            if file_extension == '.graphml':
+                # GraphML format
+                content_str = content.decode('utf-8')
+                G = nx.parse_graphml(content_str)
+                print("Parsed GraphML file")
+                
+            elif file_extension == '.gexf':
+                # GEXF format
+                content_str = content.decode('utf-8')
+                G = nx.parse_gexf(content_str)
+                print("Parsed GEXF file")
+                
+            elif file_extension == '.gml':
+                # GML format
+                content_str = content.decode('utf-8')
+                G = nx.parse_gml(content_str)
+                print("Parsed GML file")
+                
+            elif file_extension == '.json':
+                # JSON format (node-link)
+                content_str = content.decode('utf-8')
+                data = json.loads(content_str)
+                G = nx.node_link_graph(data)
+                print("Parsed JSON file")
+                
+            elif file_extension == '.net':
+                # Pajek format
+                content_str = content.decode('utf-8')
+                G = nx.parse_pajek(content_str)
+                print("Parsed Pajek file")
+                
+            elif file_extension == '.edgelist':
+                # EdgeList format
+                content_str = content.decode('utf-8')
+                G = nx.parse_edgelist(io.StringIO(content_str))
+                print("Parsed EdgeList file")
+                
+            elif file_extension == '.adjlist':
+                # AdjacencyList format
+                content_str = content.decode('utf-8')
+                G = nx.parse_adjlist(io.StringIO(content_str))
+                print("Parsed AdjacencyList file")
+                
+            else:
+                raise ValueError(f"Unsupported file format: {file_extension}")
+                
+        except Exception as parse_error:
+            print(f"Error parsing network file: {str(parse_error)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Error parsing network file: {str(parse_error)}"
+            )
+        
+        if not G:
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to create graph from uploaded file"
+            )
+        
+        print(f"Created graph with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
+        
+        # Convert to the expected format
+        nodes = [
+            Node(id=str(node), label=str(node))
+            for node in G.nodes()
+        ]
+        
+        edges = [
+            Edge(source=str(source), target=str(target))
+            for source, target in G.edges()
+        ]
+        
+        # Update MCP server with the new network data
+        try:
+            # This would be implemented if we had direct access to the MCP server
+            # For now, we'll just return the network data
+            pass
+        except Exception as mcp_error:
+            print(f"Error updating MCP server: {str(mcp_error)}")
+            # Continue even if MCP update fails
+        
+        return NetworkData(nodes=nodes, edges=edges)
+        
+    except Exception as e:
+        print(f"Error processing network file: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error processing network file: {str(e)}"
         )

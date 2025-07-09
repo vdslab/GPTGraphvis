@@ -18,10 +18,10 @@ const HomePage = () => {
             {isAuthenticated ? (
               <div className="inline-flex rounded-md shadow">
                 <Link
-                  to="/dashboard"
+                  to="/chat"
                   className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
                 >
-                  Go to Dashboard
+                  Go to Network Chat
                 </Link>
               </div>
             ) : (

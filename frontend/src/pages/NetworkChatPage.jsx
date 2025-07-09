@@ -17,7 +17,8 @@ const NetworkChatPage = () => {
     calculateLayout,
     setLayout,
     setLayoutParams,
-    applyCentrality
+    applyCentrality,
+    uploadNetworkFile
   } = useNetworkStore();
   
   const {
@@ -28,8 +29,82 @@ const NetworkChatPage = () => {
   
   const [inputMessage, setInputMessage] = useState('');
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
+  const [fileUploadError, setFileUploadError] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const graphRef = useRef();
   const messagesEndRef = useRef();
+  const fileInputRef = useRef();
+  
+  // Handle file upload
+  const handleFileUpload = async (file) => {
+    setFileUploadError(null);
+    
+    // Check if file is provided
+    if (!file) {
+      setFileUploadError("No file selected");
+      return;
+    }
+    
+    // Check file extension
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    const supportedFormats = ['graphml', 'gexf', 'gml', 'json', 'net', 'edgelist', 'adjlist'];
+    
+    if (!supportedFormats.includes(fileExtension)) {
+      setFileUploadError(`Unsupported file format: .${fileExtension}. Supported formats: ${supportedFormats.join(', ')}`);
+      return;
+    }
+    
+    try {
+      // Upload file
+      const result = await uploadNetworkFile(file);
+      if (result) {
+        console.log("Network file uploaded and processed successfully");
+        
+        // Add a system message to the chat
+        useChatStore.getState().addMessage({
+          role: 'assistant',
+          content: `Network file "${file.name}" uploaded and processed successfully.`,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error("Failed to process network file");
+        setFileUploadError("Failed to process network file");
+      }
+    } catch (error) {
+      console.error("Error uploading network file:", error);
+      setFileUploadError(error.message || "Error uploading network file");
+    }
+  };
+  
+  // Handle file input change
+  const handleFileInputChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  };
+  
+  // Handle file drop
+  const handleFileDrop = (e) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    // Get the dropped file
+    const file = e.dataTransfer.files[0];
+    if (file) {
+      handleFileUpload(file);
+    }
+  };
+  
+  // Handle drag events
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+  
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
   
   // Load sample network on component mount
   useEffect(() => {
@@ -553,20 +628,55 @@ const NetworkChatPage = () => {
         {/* Right side - Network visualization */}
         <div className="w-2/3 bg-gray-50 p-4 flex flex-col">
           <div className="mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">Network Visualization</h2>
-            {layout && (
-              <p className="text-sm text-gray-600">
-                Current Layout: <span className="font-medium">{layout}</span>
-                {Object.keys(layoutParams).length > 0 && (
-                  <span className="ml-2">
-                    with parameters: {JSON.stringify(layoutParams)}
-                  </span>
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-800">Network Visualization</h2>
+                {layout && (
+                  <p className="text-sm text-gray-600">
+                    Current Layout: <span className="font-medium">{layout}</span>
+                    {Object.keys(layoutParams).length > 0 && (
+                      <span className="ml-2">
+                        with parameters: {JSON.stringify(layoutParams)}
+                      </span>
+                    )}
+                  </p>
                 )}
-              </p>
+              </div>
+              
+              {/* File upload button */}
+              <div>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileInputChange}
+                  className="hidden"
+                  accept=".graphml,.gexf,.gml,.json,.net,.edgelist,.adjlist"
+                />
+                <button
+                  onClick={() => fileInputRef.current.click()}
+                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isLoading}
+                >
+                  Upload Network File
+                </button>
+              </div>
+            </div>
+            
+            {/* File upload error message */}
+            {fileUploadError && (
+              <div className="mt-2 p-2 bg-red-100 border border-red-300 rounded-md">
+                <p className="text-sm text-red-600">{fileUploadError}</p>
+              </div>
             )}
           </div>
           
-          <div className="flex-1 border border-gray-200 rounded-lg bg-white overflow-hidden">
+          {/* File drop area */}
+          <div 
+            className={`flex-1 border-2 ${isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-200 bg-white'} rounded-lg overflow-hidden relative`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleFileDrop}
+          >
             {isLoading ? (
               <div className="h-full flex items-center justify-center">
                 <div className="text-center">
@@ -605,7 +715,16 @@ const NetworkChatPage = () => {
                   </svg>
                   <h3 className="mt-2 text-sm font-medium text-gray-900">No network data</h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    Start chatting to visualize a network.
+                    Upload a network file or start chatting to visualize a network.
+                  </p>
+                  <button
+                    onClick={() => fileInputRef.current.click()}
+                    className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    Upload Network File
+                  </button>
+                  <p className="mt-2 text-xs text-gray-500">
+                    Supported formats: GraphML, GEXF, GML, JSON, Pajek, EdgeList, AdjList
                   </p>
                 </div>
               </div>
@@ -625,6 +744,22 @@ const NetworkChatPage = () => {
               <li>What are the most important nodes?</li>
               <li>How can I analyze this graph?</li>
             </ul>
+            
+            <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-sm text-blue-800 font-medium">Upload your own network data</p>
+              <p className="text-xs text-blue-600 mt-1">
+                You can upload your own network data in various formats supported by NetworkX:
+              </p>
+              <ul className="list-disc pl-5 mt-1 text-xs text-blue-600 space-y-0.5">
+                <li>GraphML (.graphml)</li>
+                <li>GEXF (.gexf)</li>
+                <li>GML (.gml)</li>
+                <li>JSON (.json)</li>
+                <li>Pajek (.net)</li>
+                <li>EdgeList (.edgelist)</li>
+                <li>AdjacencyList (.adjlist)</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>

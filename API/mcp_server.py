@@ -163,6 +163,92 @@ def calculate_centrality(G: nx.Graph, centrality_type: str) -> Dict[str, float]:
         raise ValueError(f"Unsupported centrality type: {centrality_type}. Supported types: {', '.join(centrality_functions.keys())}")
 
 # MCP Tool implementations
+async def update_network(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Update the network data in the MCP server.
+    
+    Args:
+        nodes: List of nodes
+        edges: List of edges
+        
+    Returns:
+        Success status
+    """
+    try:
+        nodes = arguments.get("nodes", [])
+        edges = arguments.get("edges", [])
+        
+        if not nodes or not edges:
+            return {
+                "success": False,
+                "error": "No nodes or edges provided"
+            }
+        
+        print(f"Updating network with {len(nodes)} nodes and {len(edges)} edges")
+        
+        # Create a new NetworkX graph
+        G = nx.Graph()
+        
+        # Add nodes
+        for node in nodes:
+            G.add_node(node["id"], label=node.get("label", node["id"]))
+        
+        # Add edges
+        for edge in edges:
+            G.add_edge(edge["source"], edge["target"])
+        
+        # Update network state
+        network_state["graph"] = G
+        
+        # Update positions and edges
+        network_state["positions"] = [
+            Node(
+                id=node["id"],
+                label=node.get("label", node["id"]),
+                x=node.get("x", 0),
+                y=node.get("y", 0),
+                size=node.get("size", 5),
+                color=node.get("color", "#1d4ed8")
+            )
+            for node in nodes
+        ]
+        
+        network_state["edges"] = [
+            Edge(
+                source=edge["source"],
+                target=edge["target"],
+                width=edge.get("width", 1),
+                color=edge.get("color", "#94a3b8")
+            )
+            for edge in edges
+        ]
+        
+        # Apply default layout if positions are not provided
+        if not all(node.get("x") is not None and node.get("y") is not None for node in nodes):
+            print("Positions not provided, applying default layout")
+            pos = nx.spring_layout(G)
+            
+            # Update positions
+            for i, node in enumerate(network_state["positions"]):
+                node_id = node.id
+                if node_id in pos:
+                    node.x = float(pos[node_id][0])
+                    node.y = float(pos[node_id][1])
+        
+        return {
+            "success": True,
+            "nodes_count": len(nodes),
+            "edges_count": len(edges)
+        }
+    except Exception as e:
+        print(f"Error updating network: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 async def change_layout(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
     Change the layout algorithm for the network visualization.
@@ -440,6 +526,7 @@ async def get_node_info(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 # Map of tool names to their implementations
 mcp_tools = {
+    "update_network": update_network,
     "change_layout": change_layout,
     "calculate_centrality": calculate_node_centrality,
     "highlight_nodes": highlight_nodes,
@@ -528,6 +615,73 @@ async def get_manifest():
         "version": "1.0.0",
         "description": "MCP server for network visualization",
         "tools": [
+            {
+                "name": "update_network",
+                "description": "Update the network data in the MCP server",
+                "parameters": {
+                    "nodes": {
+                        "type": "array",
+                        "description": "List of nodes",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Node ID"
+                                },
+                                "label": {
+                                    "type": "string",
+                                    "description": "Node label"
+                                },
+                                "x": {
+                                    "type": "number",
+                                    "description": "X coordinate"
+                                },
+                                "y": {
+                                    "type": "number",
+                                    "description": "Y coordinate"
+                                },
+                                "size": {
+                                    "type": "number",
+                                    "description": "Node size"
+                                },
+                                "color": {
+                                    "type": "string",
+                                    "description": "Node color"
+                                }
+                            },
+                            "required": ["id"]
+                        }
+                    },
+                    "edges": {
+                        "type": "array",
+                        "description": "List of edges",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "source": {
+                                    "type": "string",
+                                    "description": "Source node ID"
+                                },
+                                "target": {
+                                    "type": "string",
+                                    "description": "Target node ID"
+                                },
+                                "width": {
+                                    "type": "number",
+                                    "description": "Edge width"
+                                },
+                                "color": {
+                                    "type": "string",
+                                    "description": "Edge color"
+                                }
+                            },
+                            "required": ["source", "target"]
+                        }
+                    }
+                },
+                "required": ["nodes", "edges"]
+            },
             {
                 "name": "change_layout",
                 "description": "Change the layout algorithm for the network visualization",
