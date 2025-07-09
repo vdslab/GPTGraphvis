@@ -31,6 +31,7 @@ const NetworkChatPage = () => {
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [fileUploadError, setFileUploadError] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [isComposing, setIsComposing] = useState(false);
   const graphRef = useRef();
   const messagesEndRef = useRef();
   const fileInputRef = useRef();
@@ -208,10 +209,14 @@ const NetworkChatPage = () => {
     console.log("Submit handler called with message:", inputMessage);
     console.log("Is processing:", isProcessing);
     
+    // Prevent double submission
     if (!inputMessage.trim() || isProcessing) {
       console.log("Message is empty or already processing, not sending");
       return;
     }
+    
+    // Set processing flag immediately to prevent multiple submissions
+    useChatStore.getState().setTypingIndicator(true);
     
     try {
       // Check if we have a token
@@ -222,17 +227,7 @@ const NetworkChatPage = () => {
       }
       console.log("Token found when sending message:", token.substring(0, 10) + "...");
       
-      // Add user message to chat locally first for better UX
-      const userMessage = {
-        role: 'user',
-        content: inputMessage,
-        timestamp: new Date().toISOString()
-      };
-      
-      // Update messages state with user message
-      useChatStore.getState().addMessage(userMessage);
-      
-      // Clear input field
+      // Clear input field immediately for better UX
       setInputMessage('');
       console.log("Input message cleared");
       
@@ -500,10 +495,10 @@ const NetworkChatPage = () => {
   }, [messages, positions, setLayout, setLayoutParams, calculateLayout, applyCentrality]);
   
   return (
-    <div className="h-screen flex flex-col">
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left side - Chat panel */}
-        <div className="w-1/3 flex flex-col bg-white border-r border-gray-200">
+<div className="h-screen flex flex-col">
+  <div className="flex-1 flex overflow-hidden">
+    {/* Left side - Chat panel */}
+    <div className="w-1/4 flex flex-col bg-white border-r border-gray-200">
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-800">Network Chat</h2>
             <p className="text-sm text-gray-600">
@@ -588,11 +583,20 @@ const NetworkChatPage = () => {
                 placeholder="Type your message..."
                 className="flex-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 disabled={isProcessing}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => setIsComposing(false)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
+                  // Only handle Enter key press if not in IME composition mode
+                  // and not using the form's submit handler
+                  if (e.key === 'Enter' && !e.shiftKey && !isComposing) {
                     e.preventDefault();
+                    e.stopPropagation(); // Prevent event bubbling
+                    
+                    // Only submit if there's content and not already processing
                     if (inputMessage.trim() && !isProcessing) {
-                      handleSubmit(e);
+                      // Use the form's submit method instead of calling handleSubmit directly
+                      // This prevents double submission
+                      e.target.form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
                     }
                   }
                 }}
@@ -625,8 +629,8 @@ const NetworkChatPage = () => {
           </div>
         </div>
         
-        {/* Right side - Network visualization */}
-        <div className="w-2/3 bg-gray-50 p-4 flex flex-col">
+    {/* Right side - Network visualization */}
+    <div className="w-3/4 bg-gray-50 p-4 flex flex-col">
           <div className="mb-4">
             <div className="flex justify-between items-center">
               <div>
@@ -729,37 +733,6 @@ const NetworkChatPage = () => {
                 </div>
               </div>
             )}
-          </div>
-          
-          <div className="mt-4 text-sm text-gray-600">
-            <p>
-              Try asking the assistant to:
-            </p>
-            <ul className="list-disc pl-5 mt-1 space-y-1">
-              <li>Change the layout to circular</li>
-              <li>Calculate degree centrality</li>
-              <li>Highlight important nodes</li>
-              <li>Change node colors based on centrality</li>
-              <li>Tell me about this network</li>
-              <li>What are the most important nodes?</li>
-              <li>How can I analyze this graph?</li>
-            </ul>
-            
-            <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded-md">
-              <p className="text-sm text-blue-800 font-medium">Upload your own network data</p>
-              <p className="text-xs text-blue-600 mt-1">
-                You can upload your own network data in various formats supported by NetworkX:
-              </p>
-              <ul className="list-disc pl-5 mt-1 text-xs text-blue-600 space-y-0.5">
-                <li>GraphML (.graphml)</li>
-                <li>GEXF (.gexf)</li>
-                <li>GML (.gml)</li>
-                <li>JSON (.json)</li>
-                <li>Pajek (.net)</li>
-                <li>EdgeList (.edgelist)</li>
-                <li>AdjacencyList (.adjlist)</li>
-              </ul>
-            </div>
           </div>
         </div>
       </div>
