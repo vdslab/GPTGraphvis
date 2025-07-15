@@ -40,6 +40,9 @@ app.include_router(network_chat.router)
 app.include_router(network_layout.router)
 
 # Mount MCP server
+# Make sure the MCP server is properly initialized
+from mcp_server import initialize_sample_network
+initialize_sample_network()
 app.mount("/mcp", mcp_app)
 
 class Node(BaseModel):

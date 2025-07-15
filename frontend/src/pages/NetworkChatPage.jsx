@@ -4,6 +4,7 @@ import useNetworkStore from '../services/networkStore';
 import useChatStore from '../services/chatStore';
 import ReactMarkdown from 'react-markdown';
 import mcpClient from '../services/mcpClient';
+import { API_URL } from '../services/api';
 // import { useNavigate } from 'react-router-dom';
 
 const NetworkChatPage = () => {
@@ -468,29 +469,100 @@ const NetworkChatPage = () => {
           
           console.log(`Using MCP to change layout to ${layoutType}`);
           
-          // Use MCP client to change layout
+          // Try to use MCP client to change layout
+          let usedMcp = false;
           try {
             const result = await mcpClient.changeLayout(layoutType);
             console.log("MCP layout change result:", result);
             
-            // Add success message to chat
-            useChatStore.getState().addMessage({
-              role: 'assistant',
-              content: `I've changed the layout to ${layoutType}.`,
-              timestamp: new Date().toISOString(),
-              networkUpdate: {
-                type: 'layout',
-                layout: layoutType,
-                layoutParams: {}
-              }
-            });
+            if (result && result.success) {
+              usedMcp = true;
+              // Add success message to chat
+              useChatStore.getState().addMessage({
+                role: 'assistant',
+                content: `I've changed the layout to ${layoutType}.`,
+                timestamp: new Date().toISOString(),
+                networkUpdate: {
+                  type: 'layout',
+                  layout: layoutType,
+                  layoutParams: {}
+                }
+              });
+            } else {
+              console.warn("MCP returned unsuccessful result, falling back to traditional API");
+              throw new Error("MCP unsuccessful");
+            }
           } catch (mcpError) {
             console.error("Error using MCP to change layout:", mcpError);
             
-            // Fall back to regular API
-            console.log("Calling sendMessage with:", inputMessage);
-            const result = await sendMessage(inputMessage);
-            console.log("sendMessage result:", result);
+            if (!usedMcp) {
+              // Fall back to traditional API
+              try {
+                console.log(`Falling back to traditional API for layout change to ${layoutType}`);
+                
+                // Use the network/layout API directly
+                const response = await fetch(`${API_URL}/network/layout`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                  },
+                  body: JSON.stringify({
+                    nodes: positions.map(node => ({ id: node.id, label: node.label })),
+                    edges: edges.map(edge => ({ source: edge.source, target: edge.target })),
+                    layout: layoutType,
+                    layout_params: {}
+                  })
+                });
+                
+                if (response.ok) {
+                  const data = await response.json();
+                  console.log("Traditional API layout change result:", data);
+                  
+                  // Update positions from API response
+                  if (data.nodes && data.nodes.length > 0) {
+                    const updatedPositions = positions.map(node => {
+                      const updatedNode = data.nodes.find(n => n.id === node.id);
+                      if (updatedNode) {
+                        return {
+                          ...node,
+                          x: updatedNode.x,
+                          y: updatedNode.y
+                        };
+                      }
+                      return node;
+                    });
+                    
+                    // Update network store
+                    useNetworkStore.setState({ 
+                      positions: updatedPositions,
+                      layout: layoutType
+                    });
+                  }
+                  
+                  // Add success message to chat
+                  useChatStore.getState().addMessage({
+                    role: 'assistant',
+                    content: `I've changed the layout to ${layoutType}.`,
+                    timestamp: new Date().toISOString(),
+                    networkUpdate: {
+                      type: 'layout',
+                      layout: layoutType,
+                      layoutParams: {}
+                    }
+                  });
+                } else {
+                  throw new Error(`API returned status ${response.status}`);
+                }
+              } catch (apiError) {
+                console.error("Error using traditional API for layout change:", apiError);
+                
+                // Fall back to regular chat message
+                console.log("Falling back to regular chat message");
+                const result = await sendMessage(inputMessage);
+                console.log("sendMessage result:", result);
+              }
+            }
           }
         } 
         // Check if the message is a command to calculate centrality (in English or Japanese)
