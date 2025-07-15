@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { networkAPI, networkChatAPI } from './api';
 import mcpClient from './mcpClient';
 
 // Helper function to generate colors based on centrality values
@@ -38,9 +37,9 @@ const useNetworkStore = create((set, get) => ({
     set({ layoutParams });
   },
 
-  // Calculate layout
+  // Calculate layout using MCP client
   calculateLayout: async () => {
-    const { nodes, edges, layout, layoutParams } = get();
+    const { nodes, layout, layoutParams } = get();
     
     if (!nodes.length) {
       set({ error: 'No nodes provided' });
@@ -49,80 +48,60 @@ const useNetworkStore = create((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      const response = await networkAPI.calculateLayout(
-        nodes, 
-        edges, 
-        layout, 
-        layoutParams
-      );
+      // Use MCP client to calculate layout
+      const result = await mcpClient.changeLayout(layout, layoutParams || {});
       
-      set({ 
-        positions: response.data.nodes,
-        isLoading: false,
-        error: null
-      });
-      
-      return true;
+      if (result && result.success) {
+        set({ 
+          positions: result.positions || [],
+          isLoading: false,
+          error: null
+        });
+        return true;
+      } else {
+        throw new Error(result.error || 'Layout calculation failed');
+      }
     } catch (error) {
+      console.error('Error calculating layout:', error);
       set({ 
         isLoading: false, 
-        error: error.response?.data?.detail || 'Layout calculation failed'
+        error: error.message || 'Layout calculation failed'
       });
       return false;
     }
   },
 
-  // Apply layout using the new API endpoint
+  // Apply layout using MCP client
   applyLayout: async () => {
-    const { nodes, edges, layout, layoutParams } = get();
-    
-    if (!nodes.length) {
-      set({ error: 'No nodes provided' });
-      return false;
-    }
-
-    set({ isLoading: true, error: null });
-    try {
-      const response = await networkAPI.applyLayout(
-        nodes, 
-        edges, 
-        layout, 
-        layoutParams
-      );
-      
-      set({ 
-        positions: response.data.nodes,
-        isLoading: false,
-        error: null
-      });
-      
-      return true;
-    } catch (error) {
-      set({ 
-        isLoading: false, 
-        error: error.response?.data?.detail || 'Layout application failed'
-      });
-      return false;
-    }
+    // This function now uses the same implementation as calculateLayout
+    return get().calculateLayout();
   },
 
-  // Get layout recommendation
+  // Get layout recommendation using MCP client
   getLayoutRecommendation: async (description, purpose) => {
     set({ isLoading: true, error: null, recommendation: null });
     try {
-      const response = await networkAPI.recommendLayout(description, purpose);
-      
-      set({ 
-        recommendation: response.data,
-        isLoading: false,
-        error: null
+      // Use MCP client to get layout recommendation
+      const result = await mcpClient.useTool('recommend_layout', {
+        description,
+        purpose
       });
       
-      return response.data;
+      if (result && result.success) {
+        set({ 
+          recommendation: result.recommendation,
+          isLoading: false,
+          error: null
+        });
+        return result.recommendation;
+      } else {
+        throw new Error(result.error || 'Layout recommendation failed');
+      }
     } catch (error) {
+      console.error('Error getting layout recommendation:', error);
       set({ 
         isLoading: false, 
-        error: error.response?.data?.detail || 'Layout recommendation failed',
+        error: error.message || 'Layout recommendation failed',
         recommendation: null
       });
       return null;
@@ -146,35 +125,35 @@ const useNetworkStore = create((set, get) => ({
     return get().calculateLayout();
   },
 
-  // Load sample network
+  // Load sample network using MCP client
   loadSampleNetwork: async () => {
     set({ isLoading: true, error: null });
     try {
-      console.log("Attempting to load sample network");
-      const response = await networkChatAPI.getSampleNetwork();
+      console.log("Attempting to load sample network using MCP client");
       
-      console.log("Sample network loaded successfully:", response.data);
-      set({ 
-        nodes: response.data.nodes,
-        edges: response.data.edges,
-        isLoading: false,
-        error: null
-      });
+      // Use MCP client to get sample network
+      const result = await mcpClient.useTool('get_sample_network', {});
       
-      // Calculate layout for the sample network
-      return get().calculateLayout();
+      if (result && result.success) {
+        console.log("Sample network loaded successfully:", result);
+        set({ 
+          nodes: result.nodes || [],
+          edges: result.edges || [],
+          isLoading: false,
+          error: null
+        });
+        
+        // Calculate layout for the sample network
+        return get().calculateLayout();
+      } else {
+        throw new Error(result.error || 'Failed to load sample network');
+      }
     } catch (error) {
       console.error("Failed to load sample network:", error);
-      const errorMessage = error.response?.data?.detail || 'Failed to load sample network';
-      
-      // Check if it's an authentication error
-      if (error.response?.status === 401) {
-        console.error("Authentication error when loading sample network");
-      }
       
       set({ 
         isLoading: false, 
-        error: errorMessage
+        error: error.message || 'Failed to load sample network'
       });
       return false;
     }
@@ -245,46 +224,45 @@ const useNetworkStore = create((set, get) => ({
     });
   },
   
-  // Upload network file
+  // Upload network file using MCP client
   uploadNetworkFile: async (file) => {
     set({ isLoading: true, error: null });
     try {
-      console.log("Uploading network file:", file.name);
+      console.log("Uploading network file using MCP client:", file.name);
       
-      // Upload file to API
-      const response = await networkChatAPI.uploadNetworkFile(file);
-      console.log("Network file uploaded successfully:", response.data);
+      // Create form data for file upload
+      const formData = new FormData();
+      formData.append('file', file);
       
-      // Update network store with data from response
-      set({ 
-        nodes: response.data.nodes,
-        edges: response.data.edges,
-        isLoading: false,
-        error: null
+      // Use MCP client to upload network file
+      const result = await mcpClient.useTool('upload_network_file', {
+        file_name: file.name,
+        file_type: file.type,
+        file_size: file.size
       });
       
-      // Update MCP server with the new network data
-      try {
-        // Notify MCP server about the new network data
-        await mcpClient.useTool('update_network', {
-          nodes: response.data.nodes,
-          edges: response.data.edges
+      if (result && result.success) {
+        console.log("Network file uploaded successfully:", result);
+        
+        // Update network store with data from response
+        set({ 
+          nodes: result.nodes || [],
+          edges: result.edges || [],
+          isLoading: false,
+          error: null
         });
-        console.log("MCP server updated with new network data");
-      } catch (mcpError) {
-        console.error("Error updating MCP server:", mcpError);
-        // Continue even if MCP update fails
+        
+        // Calculate layout for the uploaded network
+        return get().calculateLayout();
+      } else {
+        throw new Error(result.error || 'Failed to upload network file');
       }
-      
-      // Calculate layout for the uploaded network
-      return get().calculateLayout();
     } catch (error) {
       console.error("Failed to upload network file:", error);
-      const errorMessage = error.response?.data?.detail || 'Failed to upload network file';
       
       set({ 
         isLoading: false, 
-        error: errorMessage
+        error: error.message || 'Failed to upload network file'
       });
       return false;
     }

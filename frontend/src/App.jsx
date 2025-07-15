@@ -5,8 +5,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import NetworkVisualizationPage from './pages/NetworkVisualizationPage';
-import LayoutRecommendationPage from './pages/LayoutRecommendationPage';
+// Removed NetworkVisualizationPage and LayoutRecommendationPage as part of migration to MCP-based design
 import NetworkChatPage from './pages/NetworkChatPage';
 import useAuthStore from './services/authStore';
 
@@ -49,22 +48,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
-            <Route 
-              path="/network" 
-              element={
-                <ProtectedRoute>
-                  <NetworkVisualizationPage />
-                </ProtectedRoute>
-              } 
-            />
-            <Route 
-              path="/recommend" 
-              element={
-                <ProtectedRoute>
-                  <LayoutRecommendationPage />
-                </ProtectedRoute>
-              } 
-            />
+            {/* Routes for /network and /recommend have been removed as part of migration to MCP-based design */}
             <Route 
               path="/chat" 
               element={

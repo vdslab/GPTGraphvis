@@ -38,25 +38,7 @@ const HomePage = () => {
         </div>
 
         <div className="mt-16">
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
-            <div className="bg-gray-50 p-6 rounded-lg shadow-md">
-              <div className="text-center">
-                <h3 className="text-lg font-medium text-gray-900">Network Visualization</h3>
-                <p className="mt-2 text-base text-gray-500">
-                  Visualize your network data using various layout algorithms from NetworkX.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-6 rounded-lg shadow-md">
-              <div className="text-center">
-                <h3 className="text-lg font-medium text-gray-900">Layout Recommendation</h3>
-                <p className="mt-2 text-base text-gray-500">
-                  Get recommendations for the best layout algorithm based on your network characteristics.
-                </p>
-              </div>
-            </div>
-
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <div className="bg-gray-50 p-6 rounded-lg shadow-md">
               <div className="text-center">
                 <h3 className="text-lg font-medium text-gray-900">Network Chat</h3>
@@ -68,9 +50,9 @@ const HomePage = () => {
 
             <div className="bg-gray-50 p-6 rounded-lg shadow-md">
               <div className="text-center">
-                <h3 className="text-lg font-medium text-gray-900">ChatGPT Integration</h3>
+                <h3 className="text-lg font-medium text-gray-900">MCP Integration</h3>
                 <p className="mt-2 text-base text-gray-500">
-                  Leverage ChatGPT to get insights and recommendations for your network data.
+                  Leverage Model Context Protocol (MCP) for enhanced network visualization and analysis capabilities.
                 </p>
               </div>
             </div>

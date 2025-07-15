@@ -85,28 +85,8 @@ export const authAPI = {
   },
 };
 
-// Network API
-export const networkAPI = {
-  calculateLayout: (nodes, edges, layout, layoutParams) =>
-    axios.post(`${API_URL}/network/layout`, {
-      nodes,
-      edges,
-      layout,
-      layout_params: layoutParams,
-    }),
-  applyLayout: (nodes, edges, layout, layoutParams) =>
-    axios.post(`${API_URL}/network-layout/apply`, {
-      nodes,
-      edges,
-      layout,
-      layout_params: layoutParams,
-    }),
-  recommendLayout: (description, purpose) =>
-    axios.post(`${API_URL}/chatgpt/recommend-layout`, {
-      description,
-      purpose,
-    }),
-};
+// Network API endpoints have been removed as part of migration to MCP-based design
+export const networkAPI = {};
 
 // ChatGPT API
 export const chatgptAPI = {
@@ -118,68 +98,5 @@ export const chatgptAPI = {
     }),
 };
 
-// Network Chat API
-export const networkChatAPI = {
-  sendMessage: (message, history) => {
-    console.log("Sending message to network chat API:", message);
-    console.log("Current token:", localStorage.getItem("token"));
-    
-    // Ensure we have a token
-    const token = localStorage.getItem("token");
-    if (!token) {
-      console.error("No token found when sending message");
-      return Promise.reject(new Error("Authentication required"));
-    }
-    
-    // Explicitly set the Authorization header for this request
-    return axios.post(`${API_URL}/network-chat/chat`, {
-      message,
-      history
-    }, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  },
-  getSampleNetwork: () => {
-    console.log("Getting sample network");
-    console.log("Current token:", localStorage.getItem("token"));
-    
-    // Ensure we have a token
-    const token = localStorage.getItem("token");
-    if (!token) {
-      console.error("No token found when getting sample network");
-      return Promise.reject(new Error("Authentication required"));
-    }
-    
-    // Explicitly set the Authorization header for this request
-    return axios.post(`${API_URL}/network-chat/network`, {}, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-  },
-  uploadNetworkFile: (file) => {
-    console.log("Uploading network file:", file.name);
-    console.log("Current token:", localStorage.getItem("token"));
-    
-    // Ensure we have a token
-    const token = localStorage.getItem("token");
-    if (!token) {
-      console.error("No token found when uploading network file");
-      return Promise.reject(new Error("Authentication required"));
-    }
-    
-    // Create form data
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    // Explicitly set the Authorization header for this request
-    return axios.post(`${API_URL}/network-chat/upload-network`, formData, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'multipart/form-data'
-      }
-    });
-  }
-};
+// Network Chat API endpoints have been removed as part of migration to MCP-based design
+export const networkChatAPI = {};

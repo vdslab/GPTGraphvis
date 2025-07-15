@@ -193,6 +193,15 @@ class MCPClient {
   }
 
   /**
+   * Get a sample network.
+   * 
+   * @returns {Promise<object>} - Sample network data
+   */
+  async getSampleNetwork() {
+    return this.useTool('get_sample_network', {});
+  }
+
+  /**
    * Save the current network data for a user.
    * 
    * @param {string} userId - ID of the user

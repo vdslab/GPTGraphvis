@@ -872,6 +872,32 @@ async def compare_layouts(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e)
         }
 
+# Get sample network
+async def get_sample_network(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Get a sample network (Zachary's Karate Club).
+    
+    Returns:
+        Sample network data
+    """
+    try:
+        # Initialize sample network if not already initialized
+        if not network_state["graph"]:
+            initialize_sample_network()
+        
+        return {
+            "success": True,
+            "nodes": [node.dict() for node in network_state["positions"]],
+            "edges": [edge.dict() for edge in network_state["edges"]],
+            "layout": network_state["layout"],
+            "layout_params": network_state["layout_params"]
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 # Map of tool names to their implementations
 mcp_tools = {
     "update_network": update_network,
@@ -885,7 +911,8 @@ mcp_tools = {
     "load_network": load_network,
     "list_user_networks": list_user_networks,
     "apply_community_layout": apply_community_layout,
-    "compare_layouts": compare_layouts
+    "compare_layouts": compare_layouts,
+    "get_sample_network": get_sample_network
 }
 
 # MCP server FastAPI app
@@ -1198,6 +1225,12 @@ async def get_manifest():
                         }
                     }
                 },
+                "required": []
+            },
+            {
+                "name": "get_sample_network",
+                "description": "Get a sample network (Zachary's Karate Club)",
+                "parameters": {},
                 "required": []
             }
         ],

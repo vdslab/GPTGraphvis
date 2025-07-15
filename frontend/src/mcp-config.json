@@ -80,9 +80,17 @@
               "type": "string",
               "description": "Type of layout algorithm",
               "enum": [
-                "spring", "circular", "random", "spectral", "shell", 
-                "spiral", "kamada_kawai", "fruchterman_reingold", 
-                "bipartite", "multipartite", "planar"
+                "spring",
+                "circular",
+                "random",
+                "spectral",
+                "shell",
+                "spiral",
+                "kamada_kawai",
+                "fruchterman_reingold",
+                "bipartite",
+                "multipartite",
+                "planar"
               ]
             },
             "layout_params": {
@@ -99,7 +107,13 @@
             "centrality_type": {
               "type": "string",
               "description": "Type of centrality to calculate",
-              "enum": ["degree", "closeness", "betweenness", "eigenvector", "pagerank"]
+              "enum": [
+                "degree",
+                "closeness",
+                "betweenness",
+                "eigenvector",
+                "pagerank"
+              ]
             }
           },
           "required": ["centrality_type"]
@@ -228,13 +242,28 @@
               "items": {
                 "type": "string",
                 "enum": [
-                  "spring", "circular", "random", "spectral", "shell", 
-                  "spiral", "kamada_kawai", "fruchterman_reingold", 
-                  "bipartite", "multipartite", "planar", "community"
+                  "spring",
+                  "circular",
+                  "random",
+                  "spectral",
+                  "shell",
+                  "spiral",
+                  "kamada_kawai",
+                  "fruchterman_reingold",
+                  "bipartite",
+                  "multipartite",
+                  "planar",
+                  "community"
                 ]
               }
             }
           },
+          "required": []
+        },
+        {
+          "name": "get_sample_network",
+          "description": "Get a sample network (Zachary's Karate Club)",
+          "parameters": {},
           "required": []
         }
       ],
@@ -242,7 +271,7 @@
         {
           "name": "network",
           "description": "Current network data including nodes and edges",
-          "uri": "/resources/network"
+          "uri": "/mcp/resources/network"
         }
       ]
     }

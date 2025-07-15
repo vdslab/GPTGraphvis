@@ -4,7 +4,7 @@ import useNetworkStore from '../services/networkStore';
 import useChatStore from '../services/chatStore';
 import ReactMarkdown from 'react-markdown';
 import mcpClient from '../services/mcpClient';
-import { API_URL } from '../services/api';
+// API_URL import removed as part of migration to MCP-based design
 // import { useNavigate } from 'react-router-dom';
 
 const NetworkChatPage = () => {
@@ -38,20 +38,9 @@ const NetworkChatPage = () => {
   const [networkName, setNetworkName] = useState('');
   const [showSaveDialog, setShowSaveDialog] = useState(false);
   const [showLoadDialog, setShowLoadDialog] = useState(false);
-  const [layoutOptions] = useState([
-    { value: 'spring', label: 'Spring' },
-    { value: 'circular', label: 'Circular' },
-    { value: 'kamada_kawai', label: 'Kamada-Kawai' },
-    { value: 'fruchterman_reingold', label: 'Fruchterman-Reingold' },
-    { value: 'spectral', label: 'Spectral' },
-    { value: 'shell', label: 'Shell' },
-    { value: 'spiral', label: 'Spiral' },
-    { value: 'community', label: 'Community' }
-  ]);
-  const [selectedLayout, setSelectedLayout] = useState('spring');
+  // Removed unused layout-related state variables as part of migration to MCP-based design
   const graphRef = useRef();
   const messagesEndRef = useRef();
-  const fileInputRef = useRef();
   // const navigate = useNavigate();
   
   // Handle file upload
@@ -95,13 +84,7 @@ const NetworkChatPage = () => {
     }
   };
   
-  // Handle file input change
-  const handleFileInputChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      handleFileUpload(file);
-    }
-  };
+  // Removed file input change handler as part of migration to MCP-based design
   
   // Handle file drop
   const handleFileDrop = (e) => {
@@ -213,79 +196,9 @@ const NetworkChatPage = () => {
     }
   };
   
-  // Handle layout change
-  const handleLayoutChange = async (layoutType) => {
-    try {
-      setSelectedLayout(layoutType);
-      
-      let result;
-      if (layoutType === 'community') {
-        result = await mcpClient.applyCommunityLayout('louvain', { scale: 1.0 });
-      } else {
-        result = await mcpClient.changeLayout(layoutType);
-      }
-      
-      if (result.success) {
-        console.log(`Layout changed to ${layoutType} successfully`);
-        
-        // Update positions from result
-        if (result.positions && result.positions.length > 0) {
-          const updatedPositions = positions.map(node => {
-            const updatedPos = result.positions.find(p => p.id === node.id);
-            if (updatedPos) {
-              return {
-                ...node,
-                x: updatedPos.x,
-                y: updatedPos.y
-              };
-            }
-            return node;
-          });
-          
-          // Update network store with new positions
-          useNetworkStore.setState({ 
-            positions: updatedPositions,
-            layout: layoutType
-          });
-        }
-        
-        // Add a system message to the chat
-        useChatStore.getState().addMessage({
-          role: 'assistant',
-          content: `Layout changed to ${layoutType}.`,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        console.error(`Failed to change layout: ${result.error}`);
-      }
-    } catch (error) {
-      console.error("Error changing layout:", error);
-    }
-  };
+  // Removed layout change handler as part of migration to MCP-based design
   
-  // Handle compare layouts
-  const handleCompareLayouts = async () => {
-    try {
-      const result = await mcpClient.compareLayouts(['spring', 'circular', 'kamada_kawai', 'fruchterman_reingold']);
-      if (result.success) {
-        console.log("Layout comparison results:", result);
-        
-        // Add a system message to the chat with comparison results
-        const layoutNames = Object.keys(result.positions);
-        const message = `I've compared ${layoutNames.length} different layouts for your network: ${layoutNames.join(', ')}. You can select any of these layouts from the dropdown menu.`;
-        
-        useChatStore.getState().addMessage({
-          role: 'assistant',
-          content: message,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        console.error("Failed to compare layouts:", result.error);
-      }
-    } catch (error) {
-      console.error("Error comparing layouts:", error);
-    }
-  };
+  // Removed compare layouts handler as part of migration to MCP-based design
   
   // Load user's saved networks
   useEffect(() => {
@@ -325,17 +238,17 @@ const NetworkChatPage = () => {
         }
         console.log("Token found:", token.substring(0, 10) + "...");
         
-        // Try to load network data from MCP first
+        // Try to load sample network from MCP
         try {
-          console.log("Attempting to load network data from MCP");
-          const networkData = await mcpClient.getNetworkData();
-          console.log("Network data from MCP:", networkData);
+          console.log("Attempting to load sample network from MCP");
+          const result = await mcpClient.getSampleNetwork();
+          console.log("Sample network from MCP:", result);
           
-          if (networkData && networkData.nodes && networkData.nodes.length > 0) {
-            console.log("Using network data from MCP");
+          if (result && result.success && result.nodes && result.nodes.length > 0) {
+            console.log("Using sample network from MCP");
             // Update network store with data from MCP
             useNetworkStore.setState({
-              positions: networkData.nodes.map(node => ({
+              positions: result.nodes.map(node => ({
                 id: node.id,
                 label: node.label || node.id,
                 x: node.x || 0,
@@ -343,19 +256,19 @@ const NetworkChatPage = () => {
                 size: node.size || 5,
                 color: node.color || '#1d4ed8'
               })),
-              edges: networkData.edges.map(edge => ({
+              edges: result.edges.map(edge => ({
                 source: edge.source,
                 target: edge.target,
                 width: edge.width || 1,
                 color: edge.color || '#94a3b8'
               })),
-              layout: networkData.layout || 'spring',
-              layoutParams: networkData.layout_params || {}
+              layout: result.layout || 'spring',
+              layoutParams: result.layout_params || {}
             });
             return;
           }
         } catch (mcpError) {
-          console.error("Error loading network data from MCP:", mcpError);
+          console.error("Error loading sample network from MCP:", mcpError);
           console.log("Falling back to traditional network loading");
         }
         
@@ -469,14 +382,12 @@ const NetworkChatPage = () => {
           
           console.log(`Using MCP to change layout to ${layoutType}`);
           
-          // Try to use MCP client to change layout
-          let usedMcp = false;
+          // Use MCP client to change layout
           try {
             const result = await mcpClient.changeLayout(layoutType);
             console.log("MCP layout change result:", result);
             
             if (result && result.success) {
-              usedMcp = true;
               // Add success message to chat
               useChatStore.getState().addMessage({
                 role: 'assistant',
@@ -489,82 +400,32 @@ const NetworkChatPage = () => {
                 }
               });
             } else {
-              console.warn("MCP returned unsuccessful result, falling back to traditional API");
-              throw new Error("MCP unsuccessful");
+              console.warn("MCP returned unsuccessful result");
+              // Add error message to chat
+              useChatStore.getState().addMessage({
+                role: 'assistant',
+                content: `I couldn't change the layout to ${layoutType}. Please try again later.`,
+                timestamp: new Date().toISOString(),
+                error: true
+              });
             }
           } catch (mcpError) {
             console.error("Error using MCP to change layout:", mcpError);
             
-            if (!usedMcp) {
-              // Fall back to traditional API
-              try {
-                console.log(`Falling back to traditional API for layout change to ${layoutType}`);
-                
-                // Use the network/layout API directly
-                const response = await fetch(`${API_URL}/network/layout`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                  },
-                  body: JSON.stringify({
-                    nodes: positions.map(node => ({ id: node.id, label: node.label })),
-                    edges: edges.map(edge => ({ source: edge.source, target: edge.target })),
-                    layout: layoutType,
-                    layout_params: {}
-                  })
-                });
-                
-                if (response.ok) {
-                  const data = await response.json();
-                  console.log("Traditional API layout change result:", data);
-                  
-                  // Update positions from API response
-                  if (data.nodes && data.nodes.length > 0) {
-                    const updatedPositions = positions.map(node => {
-                      const updatedNode = data.nodes.find(n => n.id === node.id);
-                      if (updatedNode) {
-                        return {
-                          ...node,
-                          x: updatedNode.x,
-                          y: updatedNode.y
-                        };
-                      }
-                      return node;
-                    });
-                    
-                    // Update network store
-                    useNetworkStore.setState({ 
-                      positions: updatedPositions,
-                      layout: layoutType
-                    });
-                  }
-                  
-                  // Add success message to chat
-                  useChatStore.getState().addMessage({
-                    role: 'assistant',
-                    content: `I've changed the layout to ${layoutType}.`,
-                    timestamp: new Date().toISOString(),
-                    networkUpdate: {
-                      type: 'layout',
-                      layout: layoutType,
-                      layoutParams: {}
-                    }
-                  });
-                } else {
-                  throw new Error(`API returned status ${response.status}`);
-                }
-              } catch (apiError) {
-                console.error("Error using traditional API for layout change:", apiError);
-                
-                // Fall back to regular chat message
-                console.log("Falling back to regular chat message");
-                const result = await sendMessage(inputMessage);
-                console.log("sendMessage result:", result);
-              }
-            }
+            // Add error message to chat
+            useChatStore.getState().addMessage({
+              role: 'assistant',
+              content: "I'm sorry, I encountered an error trying to change the layout. Please try again later.",
+              timestamp: new Date().toISOString(),
+              error: true
+            });
+            
+            // Send the message as a regular chat message
+            console.log("Sending as regular chat message");
+            const result = await sendMessage(inputMessage);
+            console.log("sendMessage result:", result);
           }
-        } 
+        }
         // Check if the message is a command to calculate centrality (in English or Japanese)
         else if (inputMessage.toLowerCase().includes('centrality') || inputMessage.includes('中心性')) {
           console.log("Detected centrality calculation command");
@@ -956,62 +817,15 @@ const NetworkChatPage = () => {
               
               {/* Control buttons */}
               <div className="flex space-x-2">
-                {/* Layout selector */}
-                <select
-                  value={selectedLayout}
-                  onChange={(e) => handleLayoutChange(e.target.value)}
-                  className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={isLoading}
-                >
-                  {layoutOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                {/* Layout selector removed as part of migration to MCP-based design */}
                 
-                {/* Compare layouts button */}
-                <button
-                  onClick={handleCompareLayouts}
-                  className="px-3 py-1 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
-                  disabled={isLoading}
-                >
-                  Compare Layouts
-                </button>
+                {/* Compare layouts button removed as part of migration to MCP-based design */}
                 
-                {/* Save network button */}
-                <button
-                  onClick={() => setShowSaveDialog(true)}
-                  className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
-                  disabled={isLoading}
-                >
-                  Save Network
-                </button>
+                {/* Save network button removed as part of migration to MCP-based design */}
                 
-                {/* Load network button */}
-                <button
-                  onClick={() => setShowLoadDialog(true)}
-                  className="px-3 py-1 bg-yellow-600 text-white text-sm rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500"
-                  disabled={isLoading || savedNetworks.length === 0}
-                >
-                  Load Network
-                </button>
+                {/* Load network button removed as part of migration to MCP-based design */}
                 
-                {/* File upload button */}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={handleFileInputChange}
-                  className="hidden"
-                  accept=".graphml,.gexf,.gml,.json,.net,.edgelist,.adjlist"
-                />
-                <button
-                  onClick={() => fileInputRef.current.click()}
-                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={isLoading}
-                >
-                  Upload File
-                </button>
+                {/* File upload button removed as part of migration to MCP-based design */}
               </div>
             </div>
             
@@ -1070,12 +884,7 @@ const NetworkChatPage = () => {
                   <p className="mt-1 text-sm text-gray-500">
                     Upload a network file or start chatting to visualize a network.
                   </p>
-                  <button
-                    onClick={() => fileInputRef.current.click()}
-                    className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    Upload Network File
-                  </button>
+                  {/* Upload Network File button removed as part of migration to MCP-based design */}
                   <p className="mt-2 text-xs text-gray-500">
                     Supported formats: GraphML, GEXF, GML, JSON, Pajek, EdgeList, AdjList
                   </p>
