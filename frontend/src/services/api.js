@@ -94,6 +94,13 @@ export const networkAPI = {
       layout,
       layout_params: layoutParams,
     }),
+  applyLayout: (nodes, edges, layout, layoutParams) =>
+    axios.post(`${API_URL}/network-layout/apply`, {
+      nodes,
+      edges,
+      layout,
+      layout_params: layoutParams,
+    }),
   recommendLayout: (description, purpose) =>
     axios.post(`${API_URL}/chatgpt/recommend-layout`, {
       description,

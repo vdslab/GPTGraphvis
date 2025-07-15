@@ -72,6 +72,40 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
+  // Apply layout using the new API endpoint
+  applyLayout: async () => {
+    const { nodes, edges, layout, layoutParams } = get();
+    
+    if (!nodes.length) {
+      set({ error: 'No nodes provided' });
+      return false;
+    }
+
+    set({ isLoading: true, error: null });
+    try {
+      const response = await networkAPI.applyLayout(
+        nodes, 
+        edges, 
+        layout, 
+        layoutParams
+      );
+      
+      set({ 
+        positions: response.data.nodes,
+        isLoading: false,
+        error: null
+      });
+      
+      return true;
+    } catch (error) {
+      set({ 
+        isLoading: false, 
+        error: error.response?.data?.detail || 'Layout application failed'
+      });
+      return false;
+    }
+  },
+
   // Get layout recommendation
   getLayoutRecommendation: async (description, purpose) => {
     set({ isLoading: true, error: null, recommendation: null });

@@ -3,8 +3,75 @@
     {
       "name": "network-visualization-mcp",
       "url": "http://localhost:8000/mcp",
-      "description": "MCP server for network visualization",
+      "description": "MCP server for network visualization with enhanced features",
       "tools": [
+        {
+          "name": "update_network",
+          "description": "Update the network data in the MCP server",
+          "parameters": {
+            "nodes": {
+              "type": "array",
+              "description": "List of nodes",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "Node ID"
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Node label"
+                  },
+                  "x": {
+                    "type": "number",
+                    "description": "X coordinate"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "Y coordinate"
+                  },
+                  "size": {
+                    "type": "number",
+                    "description": "Node size"
+                  },
+                  "color": {
+                    "type": "string",
+                    "description": "Node color"
+                  }
+                },
+                "required": ["id"]
+              }
+            },
+            "edges": {
+              "type": "array",
+              "description": "List of edges",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "description": "Source node ID"
+                  },
+                  "target": {
+                    "type": "string",
+                    "description": "Target node ID"
+                  },
+                  "width": {
+                    "type": "number",
+                    "description": "Edge width"
+                  },
+                  "color": {
+                    "type": "string",
+                    "description": "Edge color"
+                  }
+                },
+                "required": ["source", "target"]
+              }
+            }
+          },
+          "required": ["nodes", "edges"]
+        },
         {
           "name": "change_layout",
           "description": "Change the layout algorithm for the network visualization",
@@ -93,6 +160,82 @@
             }
           },
           "required": ["node_ids"]
+        },
+        {
+          "name": "save_network",
+          "description": "Save the current network data for a user",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "description": "ID of the user"
+            },
+            "network_name": {
+              "type": "string",
+              "description": "Name to save the network as"
+            }
+          },
+          "required": ["user_id"]
+        },
+        {
+          "name": "load_network",
+          "description": "Load a saved network for a user",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "description": "ID of the user"
+            },
+            "network_name": {
+              "type": "string",
+              "description": "Name of the network to load"
+            }
+          },
+          "required": ["user_id"]
+        },
+        {
+          "name": "list_user_networks",
+          "description": "List all saved networks for a user",
+          "parameters": {
+            "user_id": {
+              "type": "string",
+              "description": "ID of the user"
+            }
+          },
+          "required": ["user_id"]
+        },
+        {
+          "name": "apply_community_layout",
+          "description": "Apply a layout algorithm based on community detection",
+          "parameters": {
+            "algorithm": {
+              "type": "string",
+              "description": "Community detection algorithm to use",
+              "enum": ["louvain", "greedy_modularity"]
+            },
+            "layout_params": {
+              "type": "object",
+              "description": "Parameters for the layout algorithm"
+            }
+          },
+          "required": []
+        },
+        {
+          "name": "compare_layouts",
+          "description": "Compare different layout algorithms for the current network",
+          "parameters": {
+            "layouts": {
+              "type": "array",
+              "description": "List of layout algorithms to compare",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "spring", "circular", "random", "spectral", "shell", 
+                  "spiral", "kamada_kawai", "fruchterman_reingold", 
+                  "bipartite", "multipartite", "planar", "community"
+                ]
+              }
+            }
+          },
+          "required": []
         }
       ],
       "resources": [

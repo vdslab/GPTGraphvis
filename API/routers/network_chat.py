@@ -139,6 +139,8 @@ def parse_network_command(message: str, history: List[ChatMessage]) -> Dict[str,
                             "filter_nodes", 
                             "highlight_nodes",
                             "change_visual_properties",
+                            "show_nodes",
+                            "change_color",
                             "none"
                         ],
                         "description": "The type of network command to execute"
@@ -162,26 +164,48 @@ def parse_network_command(message: str, history: List[ChatMessage]) -> Dict[str,
                 "role": "system", 
                 "content": """
                 You are a network visualization assistant that helps users visualize and analyze network data.
-                Extract network-related commands from user messages. The commands can be:
+                Extract network-related commands from user messages in both English and Japanese.
+                
+                The commands can be:
                 
                 1. change_layout: Change the layout algorithm or its parameters
+                   - English examples: "change layout to spring", "apply circular layout"
+                   - Japanese examples: "springレイアウトを適応させてください", "円形レイアウトに変更", "レイアウトを適用"
                    - Parameters: layout_type (string), layout_params (object)
                 
                 2. calculate_centrality: Calculate node centrality metrics
+                   - English examples: "calculate degree centrality", "show betweenness centrality"
+                   - Japanese examples: "次数中心性を計算して", "媒介中心性を表示", "中心性を計算"
                    - Parameters: centrality_type (string: degree, closeness, betweenness, eigenvector, pagerank)
                 
                 3. filter_nodes: Filter nodes based on criteria
+                   - English examples: "filter nodes by degree > 5", "show only nodes with high centrality"
+                   - Japanese examples: "次数が5以上のノードをフィルタリング", "中心性の高いノードだけを表示"
                    - Parameters: filter_criteria (object)
                 
                 4. highlight_nodes: Highlight specific nodes
+                   - English examples: "highlight nodes 1, 2, and 3", "mark important nodes"
+                   - Japanese examples: "ノード1, 2, 3をハイライト", "重要なノードを強調表示"
                    - Parameters: node_ids (array), highlight_color (string)
                 
                 5. change_visual_properties: Change visual properties of nodes or edges
+                   - English examples: "change node size based on degree", "set edge color to blue"
+                   - Japanese examples: "ノードのサイズを次数に基づいて変更", "エッジの色を青に設定"
                    - Parameters: property_type (string: node_size, node_color, edge_width, edge_color), 
                                 property_value (any), 
                                 property_mapping (object, optional)
                 
-                6. none: No network command detected
+                6. show_nodes: Show or hide nodes in the visualization
+                   - English examples: "show all nodes", "hide isolated nodes"
+                   - Japanese examples: "すべてのノードを表示", "孤立したノードを非表示"
+                   - Parameters: visible (boolean)
+                
+                7. change_color: Change the color of nodes or edges
+                   - English examples: "change node color to red", "make edges green"
+                   - Japanese examples: "ノードの色を赤に変更", "エッジを緑にする"
+                   - Parameters: element_type (string: nodes, edges), color (string)
+                
+                8. none: No network command detected
                    - No parameters needed
                 
                 If the user's message doesn't contain a network command, return command_type as "none".
@@ -216,27 +240,49 @@ def parse_network_command(message: str, history: List[ChatMessage]) -> Dict[str,
             if "parameters" not in result:
                 result["parameters"] = {}
             
-            # For 'change_layout' command, if layout_type is not specified but the command is about circular layout,
-            # set layout_type to 'circular'
+            # For 'change_layout' command, detect layout type from message in both English and Japanese
             if result["command_type"] == "change_layout":
-                if "layout_type" not in result["parameters"] and "circular" in message.lower():
-                    print("Setting layout_type to 'circular' based on message content")
-                    result["parameters"]["layout_type"] = "circular"
+                if "layout_type" not in result["parameters"]:
+                    message_lower = message.lower()
+                    if "circular" in message_lower or "円形" in message:
+                        print("Setting layout_type to 'circular' based on message content")
+                        result["parameters"]["layout_type"] = "circular"
+                    elif "spring" in message_lower or "スプリング" in message:
+                        print("Setting layout_type to 'spring' based on message content")
+                        result["parameters"]["layout_type"] = "spring"
+                    elif "random" in message_lower or "ランダム" in message:
+                        print("Setting layout_type to 'random' based on message content")
+                        result["parameters"]["layout_type"] = "random"
+                    elif "spectral" in message_lower or "スペクトル" in message:
+                        print("Setting layout_type to 'spectral' based on message content")
+                        result["parameters"]["layout_type"] = "spectral"
+                    elif "shell" in message_lower or "殻" in message:
+                        print("Setting layout_type to 'shell' based on message content")
+                        result["parameters"]["layout_type"] = "shell"
+                    elif "kamada" in message_lower or "カマダ" in message:
+                        print("Setting layout_type to 'kamada_kawai' based on message content")
+                        result["parameters"]["layout_type"] = "kamada_kawai"
+                    elif "fruchterman" in message_lower or "フルクターマン" in message:
+                        print("Setting layout_type to 'fruchterman_reingold' based on message content")
+                        result["parameters"]["layout_type"] = "fruchterman_reingold"
+                    elif "community" in message_lower or "コミュニティ" in message:
+                        print("Setting layout_type to 'community' based on message content")
+                        result["parameters"]["layout_type"] = "community"
             
             # For 'calculate_centrality' command, if centrality_type is not specified but the command mentions a specific type,
-            # set centrality_type accordingly
+            # set centrality_type accordingly (in English or Japanese)
             if result["command_type"] == "calculate_centrality":
                 message_lower = message.lower()
                 if "centrality_type" not in result["parameters"]:
-                    if "degree" in message_lower:
+                    if "degree" in message_lower or "次数" in message:
                         result["parameters"]["centrality_type"] = "degree"
-                    elif "closeness" in message_lower:
+                    elif "closeness" in message_lower or "近接" in message:
                         result["parameters"]["centrality_type"] = "closeness"
-                    elif "betweenness" in message_lower:
+                    elif "betweenness" in message_lower or "媒介" in message:
                         result["parameters"]["centrality_type"] = "betweenness"
-                    elif "eigenvector" in message_lower:
+                    elif "eigenvector" in message_lower or "固有ベクトル" in message:
                         result["parameters"]["centrality_type"] = "eigenvector"
-                    elif "pagerank" in message_lower:
+                    elif "pagerank" in message_lower or "ページランク" in message:
                         result["parameters"]["centrality_type"] = "pagerank"
             
             return result
@@ -325,24 +371,55 @@ async def process_chat_message(
                     print("No parameters found in command_info, using defaults")
                     command_info["parameters"] = {}
                 
-                # For 'change_layout' command, if layout_type is not specified but the command is about circular layout,
-                # set layout_type to 'circular'
-                if "layout_type" not in command_info["parameters"] and "circular" in request.message.lower():
-                    print("Setting layout_type to 'circular' based on message content")
-                    command_info["parameters"]["layout_type"] = "circular"
+                # For 'change_layout' command, detect layout type from message in both English and Japanese
+                if "layout_type" not in command_info["parameters"]:
+                    message = request.message
+                    message_lower = message.lower()
+                    if "circular" in message_lower or "円形" in message:
+                        print("Setting layout_type to 'circular' based on message content")
+                        command_info["parameters"]["layout_type"] = "circular"
+                    elif "spring" in message_lower or "スプリング" in message:
+                        print("Setting layout_type to 'spring' based on message content")
+                        command_info["parameters"]["layout_type"] = "spring"
+                    elif "random" in message_lower or "ランダム" in message:
+                        print("Setting layout_type to 'random' based on message content")
+                        command_info["parameters"]["layout_type"] = "random"
+                    elif "spectral" in message_lower or "スペクトル" in message:
+                        print("Setting layout_type to 'spectral' based on message content")
+                        command_info["parameters"]["layout_type"] = "spectral"
+                    elif "shell" in message_lower or "殻" in message:
+                        print("Setting layout_type to 'shell' based on message content")
+                        command_info["parameters"]["layout_type"] = "shell"
+                    elif "kamada" in message_lower or "カマダ" in message:
+                        print("Setting layout_type to 'kamada_kawai' based on message content")
+                        command_info["parameters"]["layout_type"] = "kamada_kawai"
+                    elif "fruchterman" in message_lower or "フルクターマン" in message:
+                        print("Setting layout_type to 'fruchterman_reingold' based on message content")
+                        command_info["parameters"]["layout_type"] = "fruchterman_reingold"
+                    elif "community" in message_lower or "コミュニティ" in message:
+                        print("Setting layout_type to 'community' based on message content")
+                        command_info["parameters"]["layout_type"] = "community"
                 
                 layout_type = command_info["parameters"].get("layout_type", "spring")
                 layout_params = command_info["parameters"].get("layout_params", {})
                 
                 print(f"Changing layout to {layout_type} with params {layout_params}")
                 
-                # Try to use MCP server if available
+                # Try to use the new network-layout API
                 try:
-                    # This would be implemented if we had direct access to the MCP server
+                    from routers import network_layout
+                    
+                    # Get the current network data from MCP server
+                    try:
+                        # This would be implemented if we had direct access to the MCP server
+                        # For now, we'll just return the update to the frontend
+                        pass
+                    except Exception as mcp_error:
+                        print(f"Error getting network data from MCP: {str(mcp_error)}")
+                    
                     # For now, we'll just return the update to the frontend
-                    pass
-                except Exception as mcp_error:
-                    print(f"Error using MCP for layout change: {str(mcp_error)}")
+                except Exception as api_error:
+                    print(f"Error using network-layout API: {str(api_error)}")
                 
                 response_data["network_update"] = {
                     "type": "layout",
@@ -358,17 +435,18 @@ async def process_chat_message(
                 
                 # For 'calculate_centrality' command, if centrality_type is not specified but the command mentions a specific type,
                 # set centrality_type accordingly
-                message_lower = request.message.lower()
+                message = request.message
+                message_lower = message.lower()
                 if "centrality_type" not in command_info["parameters"]:
-                    if "degree" in message_lower:
+                    if "degree" in message_lower or "次数" in message:
                         command_info["parameters"]["centrality_type"] = "degree"
-                    elif "closeness" in message_lower:
+                    elif "closeness" in message_lower or "近接" in message:
                         command_info["parameters"]["centrality_type"] = "closeness"
-                    elif "betweenness" in message_lower:
+                    elif "betweenness" in message_lower or "媒介" in message:
                         command_info["parameters"]["centrality_type"] = "betweenness"
-                    elif "eigenvector" in message_lower:
+                    elif "eigenvector" in message_lower or "固有ベクトル" in message:
                         command_info["parameters"]["centrality_type"] = "eigenvector"
-                    elif "pagerank" in message_lower:
+                    elif "pagerank" in message_lower or "ページランク" in message:
                         command_info["parameters"]["centrality_type"] = "pagerank"
                 
                 centrality_type = command_info["parameters"].get("centrality_type", "degree")
@@ -420,6 +498,39 @@ async def process_chat_message(
                     "property_type": property_type,
                     "property_value": property_value,
                     "property_mapping": property_mapping
+                }
+                
+            elif command_info["command_type"] == "show_nodes":
+                # Check if parameters exists in command_info
+                if "parameters" not in command_info or not command_info["parameters"]:
+                    print("No parameters found in command_info for showing nodes, using defaults")
+                    command_info["parameters"] = {}
+                
+                visible = command_info["parameters"].get("visible", True)
+                print(f"Setting nodes visibility to {visible}")
+                
+                response_data["visualization_update"] = {
+                    "type": "show_nodes",
+                    "visible": visible
+                }
+                
+            elif command_info["command_type"] == "change_color":
+                # Check if parameters exists in command_info
+                if "parameters" not in command_info or not command_info["parameters"]:
+                    print("No parameters found in command_info for changing color, using defaults")
+                    command_info["parameters"] = {}
+                
+                element_type = command_info["parameters"].get("element_type", "nodes")
+                color = command_info["parameters"].get("color", "#1d4ed8")
+                print(f"Changing {element_type} color to {color}")
+                
+                # Convert to the format expected by the visualization update
+                property_type = f"{element_type.rstrip('s')}_color"
+                
+                response_data["visualization_update"] = {
+                    "type": "visual_properties",
+                    "property_type": property_type,
+                    "property_value": color
                 }
         
         print(f"Returning response data: {str(response_data)[:200]}...")

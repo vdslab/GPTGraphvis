@@ -4,6 +4,7 @@ import useNetworkStore from '../services/networkStore';
 import useChatStore from '../services/chatStore';
 import ReactMarkdown from 'react-markdown';
 import mcpClient from '../services/mcpClient';
+// import { useNavigate } from 'react-router-dom';
 
 const NetworkChatPage = () => {
   const { 
@@ -32,9 +33,25 @@ const NetworkChatPage = () => {
   const [fileUploadError, setFileUploadError] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [savedNetworks, setSavedNetworks] = useState([]);
+  const [networkName, setNetworkName] = useState('');
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
+  const [showLoadDialog, setShowLoadDialog] = useState(false);
+  const [layoutOptions] = useState([
+    { value: 'spring', label: 'Spring' },
+    { value: 'circular', label: 'Circular' },
+    { value: 'kamada_kawai', label: 'Kamada-Kawai' },
+    { value: 'fruchterman_reingold', label: 'Fruchterman-Reingold' },
+    { value: 'spectral', label: 'Spectral' },
+    { value: 'shell', label: 'Shell' },
+    { value: 'spiral', label: 'Spiral' },
+    { value: 'community', label: 'Community' }
+  ]);
+  const [selectedLayout, setSelectedLayout] = useState('spring');
   const graphRef = useRef();
   const messagesEndRef = useRef();
   const fileInputRef = useRef();
+  // const navigate = useNavigate();
   
   // Handle file upload
   const handleFileUpload = async (file) => {
@@ -107,6 +124,193 @@ const NetworkChatPage = () => {
     setIsDragging(false);
   };
   
+  // Handle network save
+  const handleSaveNetwork = async () => {
+    try {
+      if (!networkName.trim()) {
+        alert("Please enter a network name");
+        return;
+      }
+      
+      const userId = localStorage.getItem('userId') || localStorage.getItem('username');
+      if (!userId) {
+        alert("User ID not found. Please log in again.");
+        return;
+      }
+      
+      const result = await mcpClient.saveNetwork(userId, networkName);
+      if (result.success) {
+        alert(`Network saved as "${networkName}"`);
+        setShowSaveDialog(false);
+        setNetworkName('');
+        
+        // Refresh saved networks list
+        const networksResult = await mcpClient.listUserNetworks(userId);
+        if (networksResult.success) {
+          setSavedNetworks(networksResult.networks || []);
+        }
+      } else {
+        alert(`Failed to save network: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Error saving network:", error);
+      alert(`Error saving network: ${error.message}`);
+    }
+  };
+  
+  // Handle network load
+  const handleLoadNetwork = async (name) => {
+    try {
+      const userId = localStorage.getItem('userId') || localStorage.getItem('username');
+      if (!userId) {
+        alert("User ID not found. Please log in again.");
+        return;
+      }
+      
+      const result = await mcpClient.loadNetwork(userId, name);
+      if (result.success) {
+        alert(`Network "${name}" loaded successfully`);
+        setShowLoadDialog(false);
+        
+        // Update network store with loaded data
+        if (result.network_data) {
+          const { nodes, edges, layout, layout_params } = result.network_data;
+          
+          // Update network store
+          useNetworkStore.setState({
+            positions: nodes.map(node => ({
+              id: node.id,
+              label: node.label || node.id,
+              x: node.x || 0,
+              y: node.y || 0,
+              size: node.size || 5,
+              color: node.color || '#1d4ed8'
+            })),
+            edges: edges.map(edge => ({
+              source: edge.source,
+              target: edge.target,
+              width: edge.width || 1,
+              color: edge.color || '#94a3b8'
+            })),
+            layout: layout || 'spring',
+            layoutParams: layout_params || {}
+          });
+          
+          // Add a system message to the chat
+          useChatStore.getState().addMessage({
+            role: 'assistant',
+            content: `Network "${name}" loaded successfully.`,
+            timestamp: new Date().toISOString()
+          });
+        }
+      } else {
+        alert(`Failed to load network: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Error loading network:", error);
+      alert(`Error loading network: ${error.message}`);
+    }
+  };
+  
+  // Handle layout change
+  const handleLayoutChange = async (layoutType) => {
+    try {
+      setSelectedLayout(layoutType);
+      
+      let result;
+      if (layoutType === 'community') {
+        result = await mcpClient.applyCommunityLayout('louvain', { scale: 1.0 });
+      } else {
+        result = await mcpClient.changeLayout(layoutType);
+      }
+      
+      if (result.success) {
+        console.log(`Layout changed to ${layoutType} successfully`);
+        
+        // Update positions from result
+        if (result.positions && result.positions.length > 0) {
+          const updatedPositions = positions.map(node => {
+            const updatedPos = result.positions.find(p => p.id === node.id);
+            if (updatedPos) {
+              return {
+                ...node,
+                x: updatedPos.x,
+                y: updatedPos.y
+              };
+            }
+            return node;
+          });
+          
+          // Update network store with new positions
+          useNetworkStore.setState({ 
+            positions: updatedPositions,
+            layout: layoutType
+          });
+        }
+        
+        // Add a system message to the chat
+        useChatStore.getState().addMessage({
+          role: 'assistant',
+          content: `Layout changed to ${layoutType}.`,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error(`Failed to change layout: ${result.error}`);
+      }
+    } catch (error) {
+      console.error("Error changing layout:", error);
+    }
+  };
+  
+  // Handle compare layouts
+  const handleCompareLayouts = async () => {
+    try {
+      const result = await mcpClient.compareLayouts(['spring', 'circular', 'kamada_kawai', 'fruchterman_reingold']);
+      if (result.success) {
+        console.log("Layout comparison results:", result);
+        
+        // Add a system message to the chat with comparison results
+        const layoutNames = Object.keys(result.positions);
+        const message = `I've compared ${layoutNames.length} different layouts for your network: ${layoutNames.join(', ')}. You can select any of these layouts from the dropdown menu.`;
+        
+        useChatStore.getState().addMessage({
+          role: 'assistant',
+          content: message,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.error("Failed to compare layouts:", result.error);
+      }
+    } catch (error) {
+      console.error("Error comparing layouts:", error);
+    }
+  };
+  
+  // Load user's saved networks
+  useEffect(() => {
+    const loadUserNetworks = async () => {
+      try {
+        const userId = localStorage.getItem('userId');
+        if (!userId) {
+          console.log("No user ID found, skipping network list loading");
+          return;
+        }
+        
+        const result = await mcpClient.listUserNetworks(userId);
+        if (result.success) {
+          setSavedNetworks(result.networks || []);
+          console.log("Loaded user networks:", result.networks);
+        } else {
+          console.error("Failed to load user networks:", result.error);
+        }
+      } catch (error) {
+        console.error("Error loading user networks:", error);
+      }
+    };
+    
+    loadUserNetworks();
+  }, []);
+
   // Load sample network on component mount
   useEffect(() => {
     const loadNetwork = async () => {
@@ -235,20 +439,31 @@ const NetworkChatPage = () => {
       useChatStore.getState().setTypingIndicator(true);
       
       try {
-        // Check if the message is a command to change the layout
-        if (inputMessage.toLowerCase().includes('change') && inputMessage.toLowerCase().includes('layout')) {
+        // Check if the message is a command to change the layout (in English or Japanese)
+        if ((inputMessage.toLowerCase().includes('change') && inputMessage.toLowerCase().includes('layout')) ||
+            (inputMessage.includes('レイアウト') && (inputMessage.includes('適応') || inputMessage.includes('変更') || inputMessage.includes('適用')))) {
           console.log("Detected layout change command");
           
-          // Determine layout type from message
+          // Determine layout type from message (English or Japanese)
           let layoutType = "spring"; // Default
-          if (inputMessage.toLowerCase().includes('circular')) {
+          const message = inputMessage.toLowerCase();
+          
+          if (message.includes('circular') || message.includes('円形')) {
             layoutType = "circular";
-          } else if (inputMessage.toLowerCase().includes('random')) {
+          } else if (message.includes('random') || message.includes('ランダム')) {
             layoutType = "random";
-          } else if (inputMessage.toLowerCase().includes('spectral')) {
+          } else if (message.includes('spectral') || message.includes('スペクトル')) {
             layoutType = "spectral";
-          } else if (inputMessage.toLowerCase().includes('shell')) {
+          } else if (message.includes('shell') || message.includes('殻')) {
             layoutType = "shell";
+          } else if (message.includes('spring') || message.includes('スプリング')) {
+            layoutType = "spring";
+          } else if (message.includes('kamada') || message.includes('カマダ')) {
+            layoutType = "kamada_kawai";
+          } else if (message.includes('fruchterman') || message.includes('フルクターマン')) {
+            layoutType = "fruchterman_reingold";
+          } else if (message.includes('community') || message.includes('コミュニティ')) {
+            layoutType = "community";
           }
           
           console.log(`Using MCP to change layout to ${layoutType}`);
@@ -278,20 +493,24 @@ const NetworkChatPage = () => {
             console.log("sendMessage result:", result);
           }
         } 
-        // Check if the message is a command to calculate centrality
-        else if (inputMessage.toLowerCase().includes('centrality')) {
+        // Check if the message is a command to calculate centrality (in English or Japanese)
+        else if (inputMessage.toLowerCase().includes('centrality') || inputMessage.includes('中心性')) {
           console.log("Detected centrality calculation command");
           
-          // Determine centrality type from message
+          // Determine centrality type from message (English or Japanese)
           let centralityType = "degree"; // Default
-          if (inputMessage.toLowerCase().includes('closeness')) {
+          const message = inputMessage.toLowerCase();
+          
+          if (message.includes('closeness') || message.includes('近接')) {
             centralityType = "closeness";
-          } else if (inputMessage.toLowerCase().includes('betweenness')) {
+          } else if (message.includes('betweenness') || message.includes('媒介')) {
             centralityType = "betweenness";
-          } else if (inputMessage.toLowerCase().includes('eigenvector')) {
+          } else if (message.includes('eigenvector') || message.includes('固有ベクトル')) {
             centralityType = "eigenvector";
-          } else if (inputMessage.toLowerCase().includes('pagerank')) {
+          } else if (message.includes('pagerank') || message.includes('ページランク')) {
             centralityType = "pagerank";
+          } else if (message.includes('degree') || message.includes('次数')) {
+            centralityType = "degree";
           }
           
           console.log(`Using MCP to calculate ${centralityType} centrality`);
@@ -487,6 +706,22 @@ const NetworkChatPage = () => {
             .catch(error => {
               console.error('Error changing visual properties:', error);
             });
+        } else if (update.type === 'show_nodes') {
+          // Use MCP client to show/hide nodes by changing their size
+          const visible = update.visible;
+          const nodeSize = visible ? 5 : 0; // Set size to 0 to hide nodes
+          
+          mcpClient.changeVisualProperties('node_size', nodeSize, {})
+            .then(result => {
+              if (result.success) {
+                console.log(`Nodes ${visible ? 'shown' : 'hidden'} successfully:`, result);
+              } else {
+                console.error(`Failed to ${visible ? 'show' : 'hide'} nodes:`, result.error);
+              }
+            })
+            .catch(error => {
+              console.error(`Error ${visible ? 'showing' : 'hiding'} nodes:`, error);
+            });
         }
       } catch (error) {
         console.error('Error handling visualization update:', error);
@@ -647,8 +882,50 @@ const NetworkChatPage = () => {
                 )}
               </div>
               
-              {/* File upload button */}
-              <div>
+              {/* Control buttons */}
+              <div className="flex space-x-2">
+                {/* Layout selector */}
+                <select
+                  value={selectedLayout}
+                  onChange={(e) => handleLayoutChange(e.target.value)}
+                  className="px-2 py-1 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  disabled={isLoading}
+                >
+                  {layoutOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                
+                {/* Compare layouts button */}
+                <button
+                  onClick={handleCompareLayouts}
+                  className="px-3 py-1 bg-purple-600 text-white text-sm rounded-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  disabled={isLoading}
+                >
+                  Compare Layouts
+                </button>
+                
+                {/* Save network button */}
+                <button
+                  onClick={() => setShowSaveDialog(true)}
+                  className="px-3 py-1 bg-green-600 text-white text-sm rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  disabled={isLoading}
+                >
+                  Save Network
+                </button>
+                
+                {/* Load network button */}
+                <button
+                  onClick={() => setShowLoadDialog(true)}
+                  className="px-3 py-1 bg-yellow-600 text-white text-sm rounded-md hover:bg-yellow-700 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  disabled={isLoading || savedNetworks.length === 0}
+                >
+                  Load Network
+                </button>
+                
+                {/* File upload button */}
                 <input
                   type="file"
                   ref={fileInputRef}
@@ -661,7 +938,7 @@ const NetworkChatPage = () => {
                   className="px-3 py-1 bg-blue-600 text-white text-sm rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={isLoading}
                 >
-                  Upload Network File
+                  Upload File
                 </button>
               </div>
             </div>
@@ -734,6 +1011,77 @@ const NetworkChatPage = () => {
               </div>
             )}
           </div>
+          
+          {/* Save Network Dialog */}
+          {showSaveDialog && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 w-96">
+                <h3 className="text-lg font-semibold mb-4">Save Network</h3>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Network Name
+                  </label>
+                  <input
+                    type="text"
+                    value={networkName}
+                    onChange={(e) => setNetworkName(e.target.value)}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter network name"
+                  />
+                </div>
+                <div className="flex justify-end space-x-2">
+                  <button
+                    onClick={() => setShowSaveDialog(false)}
+                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSaveNetwork}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={!networkName.trim()}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Load Network Dialog */}
+          {showLoadDialog && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-lg p-6 w-96">
+                <h3 className="text-lg font-semibold mb-4">Load Network</h3>
+                {savedNetworks.length > 0 ? (
+                  <div className="mb-4 max-h-60 overflow-y-auto">
+                    <ul className="divide-y divide-gray-200">
+                      {savedNetworks.map((name) => (
+                        <li key={name} className="py-2">
+                          <button
+                            onClick={() => handleLoadNetwork(name)}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            {name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-gray-500 mb-4">No saved networks found.</p>
+                )}
+                <div className="flex justify-end">
+                  <button
+                    onClick={() => setShowLoadDialog(false)}
+                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

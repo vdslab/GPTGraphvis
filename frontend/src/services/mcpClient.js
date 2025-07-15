@@ -1,6 +1,7 @@
 /**
  * MCP (Model Context Protocol) client for interacting with the MCP server.
  * This client provides methods for using MCP tools and accessing MCP resources.
+ * Enhanced with network data persistence and advanced layout algorithms.
  */
 
 import axios from 'axios';
@@ -189,6 +190,72 @@ class MCPClient {
    */
   async getNetworkData() {
     return this.accessResource('/resources/network');
+  }
+
+  /**
+   * Save the current network data for a user.
+   * 
+   * @param {string} userId - ID of the user
+   * @param {string} networkName - Name to save the network as
+   * @returns {Promise<object>} - Success status and message
+   */
+  async saveNetwork(userId, networkName = 'default') {
+    return this.useTool('save_network', {
+      user_id: userId,
+      network_name: networkName
+    });
+  }
+
+  /**
+   * Load a saved network for a user.
+   * 
+   * @param {string} userId - ID of the user
+   * @param {string} networkName - Name of the network to load
+   * @returns {Promise<object>} - Loaded network data
+   */
+  async loadNetwork(userId, networkName = 'default') {
+    return this.useTool('load_network', {
+      user_id: userId,
+      network_name: networkName
+    });
+  }
+
+  /**
+   * List all saved networks for a user.
+   * 
+   * @param {string} userId - ID of the user
+   * @returns {Promise<object>} - List of network names
+   */
+  async listUserNetworks(userId) {
+    return this.useTool('list_user_networks', {
+      user_id: userId
+    });
+  }
+
+  /**
+   * Apply a layout algorithm based on community detection.
+   * 
+   * @param {string} algorithm - Community detection algorithm to use
+   * @param {object} layoutParams - Parameters for the layout algorithm
+   * @returns {Promise<object>} - Updated network positions
+   */
+  async applyCommunityLayout(algorithm = 'louvain', layoutParams = {}) {
+    return this.useTool('apply_community_layout', {
+      algorithm,
+      layout_params: layoutParams
+    });
+  }
+
+  /**
+   * Compare different layout algorithms for the current network.
+   * 
+   * @param {string[]} layouts - List of layout algorithms to compare
+   * @returns {Promise<object>} - Positions for each layout algorithm
+   */
+  async compareLayouts(layouts = ['spring', 'circular', 'kamada_kawai']) {
+    return this.useTool('compare_layouts', {
+      layouts
+    });
   }
 }
 

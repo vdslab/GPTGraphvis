@@ -66,6 +66,10 @@ network_state = {
     }
 }
 
+# User network storage
+# In a production environment, this would be stored in a database
+user_networks = {}  # user_id -> {network_name -> network_data}
+
 # Initialize with a sample network
 def initialize_sample_network():
     """Initialize the network state with a sample network (Zachary's Karate Club)."""
@@ -524,6 +528,350 @@ async def get_node_info(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e)
         }
 
+async def save_network(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Save the current network data for a user.
+    
+    Args:
+        user_id: ID of the user
+        network_name: Name to save the network as
+        
+    Returns:
+        Success status and message
+    """
+    try:
+        user_id = arguments.get("user_id")
+        network_name = arguments.get("network_name", "default")
+        
+        if not user_id:
+            return {
+                "success": False,
+                "error": "User ID is required"
+            }
+        
+        # Create network data to save
+        network_data = {
+            "nodes": [node.dict() for node in network_state["positions"]],
+            "edges": [edge.dict() for edge in network_state["edges"]],
+            "layout": network_state["layout"],
+            "layout_params": network_state["layout_params"],
+            "centrality": network_state["centrality"],
+            "visual_properties": network_state["visual_properties"]
+        }
+        
+        # Initialize user's networks if not exists
+        if user_id not in user_networks:
+            user_networks[user_id] = {}
+        
+        # Save network data
+        user_networks[user_id][network_name] = network_data
+        
+        return {
+            "success": True,
+            "message": f"Network saved as '{network_name}' for user {user_id}",
+            "user_id": user_id,
+            "network_name": network_name
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+async def load_network(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load a saved network for a user.
+    
+    Args:
+        user_id: ID of the user
+        network_name: Name of the network to load
+        
+    Returns:
+        Loaded network data
+    """
+    try:
+        user_id = arguments.get("user_id")
+        network_name = arguments.get("network_name", "default")
+        
+        if not user_id:
+            return {
+                "success": False,
+                "error": "User ID is required"
+            }
+        
+        # Check if user has saved networks
+        if user_id not in user_networks:
+            return {
+                "success": False,
+                "error": f"No networks found for user {user_id}"
+            }
+        
+        # Check if network exists
+        if network_name not in user_networks[user_id]:
+            return {
+                "success": False,
+                "error": f"Network '{network_name}' not found for user {user_id}"
+            }
+        
+        # Get network data
+        network_data = user_networks[user_id][network_name]
+        
+        # Update network state
+        nodes_data = network_data["nodes"]
+        edges_data = network_data["edges"]
+        
+        # Create a new NetworkX graph
+        G = nx.Graph()
+        
+        # Add nodes
+        for node in nodes_data:
+            G.add_node(node["id"], label=node.get("label", node["id"]))
+        
+        # Add edges
+        for edge in edges_data:
+            G.add_edge(edge["source"], edge["target"])
+        
+        # Update network state
+        network_state["graph"] = G
+        network_state["positions"] = [
+            Node(
+                id=node["id"],
+                label=node.get("label", node["id"]),
+                x=node.get("x", 0),
+                y=node.get("y", 0),
+                size=node.get("size", 5),
+                color=node.get("color", "#1d4ed8")
+            )
+            for node in nodes_data
+        ]
+        network_state["edges"] = [
+            Edge(
+                source=edge["source"],
+                target=edge["target"],
+                width=edge.get("width", 1),
+                color=edge.get("color", "#94a3b8")
+            )
+            for edge in edges_data
+        ]
+        network_state["layout"] = network_data["layout"]
+        network_state["layout_params"] = network_data["layout_params"]
+        network_state["centrality"] = network_data["centrality"]
+        network_state["visual_properties"] = network_data["visual_properties"]
+        
+        return {
+            "success": True,
+            "message": f"Network '{network_name}' loaded for user {user_id}",
+            "network_data": network_data
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+async def list_user_networks(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    List all saved networks for a user.
+    
+    Args:
+        user_id: ID of the user
+        
+    Returns:
+        List of network names
+    """
+    try:
+        user_id = arguments.get("user_id")
+        
+        if not user_id:
+            return {
+                "success": False,
+                "error": "User ID is required"
+            }
+        
+        # Check if user has saved networks
+        if user_id not in user_networks:
+            return {
+                "success": True,
+                "networks": []
+            }
+        
+        # Get network names
+        network_names = list(user_networks[user_id].keys())
+        
+        return {
+            "success": True,
+            "networks": network_names
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+async def apply_community_layout(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Apply a layout algorithm based on community detection.
+    
+    Args:
+        algorithm: Community detection algorithm to use
+        layout_params: Parameters for the layout algorithm
+        
+    Returns:
+        Updated network positions
+    """
+    try:
+        algorithm = arguments.get("algorithm", "louvain")
+        layout_params = arguments.get("layout_params", {})
+        
+        G = network_state["graph"]
+        
+        if not G:
+            return {
+                "success": False,
+                "error": "No network data available"
+            }
+        
+        # Detect communities
+        communities = None
+        if algorithm == "louvain":
+            try:
+                import community as community_louvain
+                partition = community_louvain.best_partition(G)
+                # Group nodes by community
+                community_dict = {}
+                for node, community_id in partition.items():
+                    if community_id not in community_dict:
+                        community_dict[community_id] = []
+                    community_dict[community_id].append(node)
+                communities = list(community_dict.values())
+            except ImportError:
+                # Fallback to networkx community detection
+                communities = list(nx.community.greedy_modularity_communities(G))
+        else:
+            # Use networkx community detection
+            communities = list(nx.community.greedy_modularity_communities(G))
+        
+        # Create a new graph with communities as nodes
+        community_graph = nx.Graph()
+        for i, community in enumerate(communities):
+            community_graph.add_node(i, size=len(community))
+        
+        # Add edges between communities
+        for i, comm1 in enumerate(communities):
+            for j, comm2 in enumerate(communities):
+                if i < j:  # Avoid duplicate edges
+                    # Count edges between communities
+                    edge_count = 0
+                    for node1 in comm1:
+                        for node2 in comm2:
+                            if G.has_edge(node1, node2):
+                                edge_count += 1
+                    
+                    if edge_count > 0:
+                        community_graph.add_edge(i, j, weight=edge_count)
+        
+        # Apply layout to community graph
+        scale = layout_params.get("scale", 1.0)
+        community_pos = nx.spring_layout(community_graph, weight='weight', scale=scale)
+        
+        # Position nodes within their communities
+        pos = {}
+        for i, community in enumerate(communities):
+            # Get the center of the community
+            center = community_pos[i]
+            
+            # Create a subgraph for the community
+            subgraph = G.subgraph(community)
+            
+            # Apply layout to the subgraph
+            sub_pos = nx.spring_layout(subgraph, scale=0.3)
+            
+            # Adjust positions relative to community center
+            for node, coords in sub_pos.items():
+                pos[node] = (center[0] + coords[0], center[1] + coords[1])
+        
+        # Update positions
+        for node in network_state["positions"]:
+            node_id = node.id
+            if node_id in pos:
+                node.x = float(pos[node_id][0])
+                node.y = float(pos[node_id][1])
+        
+        # Update network state
+        network_state["layout"] = "community"
+        network_state["layout_params"] = {
+            "algorithm": algorithm,
+            **layout_params
+        }
+        
+        return {
+            "success": True,
+            "layout": "community",
+            "layout_params": {
+                "algorithm": algorithm,
+                **layout_params
+            },
+            "communities": [list(c) for c in communities],
+            "positions": [
+                {
+                    "id": node.id,
+                    "x": node.x,
+                    "y": node.y
+                }
+                for node in network_state["positions"]
+            ]
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+async def compare_layouts(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Compare different layout algorithms for the current network.
+    
+    Args:
+        layouts: List of layout algorithms to compare
+        
+    Returns:
+        Positions for each layout algorithm
+    """
+    try:
+        layouts = arguments.get("layouts", ["spring", "circular", "kamada_kawai"])
+        
+        G = network_state["graph"]
+        
+        if not G:
+            return {
+                "success": False,
+                "error": "No network data available"
+            }
+        
+        # Calculate positions for each layout
+        layout_positions = {}
+        for layout_type in layouts:
+            try:
+                pos = apply_layout(G, layout_type)
+                layout_positions[layout_type] = {
+                    node_id: [float(coords[0]), float(coords[1])]
+                    for node_id, coords in pos.items()
+                }
+            except Exception as layout_error:
+                print(f"Error calculating {layout_type} layout: {str(layout_error)}")
+                layout_positions[layout_type] = {"error": str(layout_error)}
+        
+        return {
+            "success": True,
+            "layouts": layouts,
+            "positions": layout_positions
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 # Map of tool names to their implementations
 mcp_tools = {
     "update_network": update_network,
@@ -532,7 +880,12 @@ mcp_tools = {
     "highlight_nodes": highlight_nodes,
     "change_visual_properties": change_visual_properties,
     "get_network_info": get_network_info,
-    "get_node_info": get_node_info
+    "get_node_info": get_node_info,
+    "save_network": save_network,
+    "load_network": load_network,
+    "list_user_networks": list_user_networks,
+    "apply_community_layout": apply_community_layout,
+    "compare_layouts": compare_layouts
 }
 
 # MCP server FastAPI app
@@ -612,8 +965,8 @@ async def get_manifest():
     """
     return {
         "name": "network-visualization-mcp",
-        "version": "1.0.0",
-        "description": "MCP server for network visualization",
+        "version": "1.1.0",
+        "description": "MCP server for network visualization with enhanced features",
         "tools": [
             {
                 "name": "update_network",
@@ -770,6 +1123,82 @@ async def get_manifest():
                     }
                 },
                 "required": ["node_ids"]
+            },
+            {
+                "name": "save_network",
+                "description": "Save the current network data for a user",
+                "parameters": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "ID of the user"
+                    },
+                    "network_name": {
+                        "type": "string",
+                        "description": "Name to save the network as"
+                    }
+                },
+                "required": ["user_id"]
+            },
+            {
+                "name": "load_network",
+                "description": "Load a saved network for a user",
+                "parameters": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "ID of the user"
+                    },
+                    "network_name": {
+                        "type": "string",
+                        "description": "Name of the network to load"
+                    }
+                },
+                "required": ["user_id"]
+            },
+            {
+                "name": "list_user_networks",
+                "description": "List all saved networks for a user",
+                "parameters": {
+                    "user_id": {
+                        "type": "string",
+                        "description": "ID of the user"
+                    }
+                },
+                "required": ["user_id"]
+            },
+            {
+                "name": "apply_community_layout",
+                "description": "Apply a layout algorithm based on community detection",
+                "parameters": {
+                    "algorithm": {
+                        "type": "string",
+                        "description": "Community detection algorithm to use",
+                        "enum": ["louvain", "greedy_modularity"]
+                    },
+                    "layout_params": {
+                        "type": "object",
+                        "description": "Parameters for the layout algorithm"
+                    }
+                },
+                "required": []
+            },
+            {
+                "name": "compare_layouts",
+                "description": "Compare different layout algorithms for the current network",
+                "parameters": {
+                    "layouts": {
+                        "type": "array",
+                        "description": "List of layout algorithms to compare",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "spring", "circular", "random", "spectral", "shell", 
+                                "spiral", "kamada_kawai", "fruchterman_reingold", 
+                                "bipartite", "multipartite", "planar", "community"
+                            ]
+                        }
+                    }
+                },
+                "required": []
             }
         ],
         "resources": [
