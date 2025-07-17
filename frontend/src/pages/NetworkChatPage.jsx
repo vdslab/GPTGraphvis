@@ -5,48 +5,36 @@ import useChatStore from '../services/chatStore';
 import ReactMarkdown from 'react-markdown';
 import mcpClient from '../services/mcpClient';
 import FileUploadButton from '../components/FileUploadButton';
-// API_URL import removed as part of migration to MCP-based design
-// import { useNavigate } from 'react-router-dom';
 
 const NetworkChatPage = () => {
   const { 
     edges, 
     positions, 
     layout, 
-    layoutParams, 
     isLoading, 
     error,
-    recommendation,
     loadSampleNetwork,
     calculateLayout,
     setLayout,
     setLayoutParams,
     applyCentrality,
     uploadNetworkFile,
-    recommendLayoutAndApply,
-    exportAsGraphML
+    changeVisualProperties
   } = useNetworkStore();
   
   const {
     messages,
     sendMessage,
-    isProcessing
+    isProcessing,
+    addMessage
   } = useChatStore();
   
   const [inputMessage, setInputMessage] = useState('');
   const [graphData, setGraphData] = useState({ nodes: [], links: [] });
   const [fileUploadError, setFileUploadError] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [isComposing, setIsComposing] = useState(false);
-  const [savedNetworks, setSavedNetworks] = useState([]);
-  const [networkName, setNetworkName] = useState('');
-  const [showSaveDialog, setShowSaveDialog] = useState(false);
-  const [showLoadDialog, setShowLoadDialog] = useState(false);
-  // Removed unused layout-related state variables as part of migration to MCP-based design
   const graphRef = useRef();
   const messagesEndRef = useRef();
-  const fileInputRef = useRef(null);
-  // const navigate = useNavigate();
   
   // Handle file upload
   const handleFileUpload = async (file) => {
@@ -74,7 +62,7 @@ const NetworkChatPage = () => {
         console.log("Network file uploaded and processed successfully");
         
         // Add a system message to the chat
-        useChatStore.getState().addMessage({
+        addMessage({
           role: 'assistant',
           content: `Network file "${file.name}" uploaded and processed successfully.`,
           timestamp: new Date().toISOString()
@@ -123,7 +111,6 @@ const NetworkChatPage = () => {
         
         const result = await mcpClient.listUserNetworks(userId);
         if (result.success) {
-          setSavedNetworks(result.networks || []);
           console.log("Loaded user networks:", result.networks);
         } else {
           console.error("Failed to load user networks:", result.error);
@@ -232,16 +219,63 @@ const NetworkChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
   
+  // Process network updates from chat messages
+  useEffect(() => {
+    // Check if there are any messages
+    if (messages.length === 0) return;
+    
+    // Get the most recent message
+    const lastMessage = messages[messages.length - 1];
+    
+    // Check if it's an assistant message with a network update
+    if (lastMessage.role === 'assistant' && lastMessage.networkUpdate) {
+      console.log("Processing network update from message:", lastMessage.networkUpdate);
+      
+      const { type, ...updateData } = lastMessage.networkUpdate;
+      
+      // Handle different types of updates
+      switch (type) {
+        case 'layout':
+          // Update layout
+          if (updateData.layout) {
+            setLayout(updateData.layout);
+            if (updateData.layoutParams) {
+              setLayoutParams(updateData.layoutParams);
+            }
+            calculateLayout();
+          }
+          break;
+          
+        case 'centrality':
+          // Apply centrality
+          if (updateData.centralityType) {
+            applyCentrality(updateData.centralityType);
+          }
+          break;
+          
+        case 'visualProperty':
+          // Change visual properties
+          if (updateData.propertyType && updateData.propertyValue) {
+            changeVisualProperties(
+              updateData.propertyType, 
+              updateData.propertyValue, 
+              updateData.propertyMapping || {}
+            );
+          }
+          break;
+          
+        default:
+          console.log("Unknown network update type:", type);
+      }
+    }
+  }, [messages, setLayout, setLayoutParams, calculateLayout, applyCentrality, changeVisualProperties]);
+  
   // Handle message submission
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Debug current messages
-    console.log("DEBUG BEFORE SUBMIT - Current messages:", useChatStore.getState().debugMessages());
-    
     // Prevent double submission
     if (!inputMessage.trim() || isProcessing) {
-      console.log("Preventing submission: empty message or already processing");
       return;
     }
     
@@ -249,125 +283,50 @@ const NetworkChatPage = () => {
     const messageToSend = inputMessage;
     setInputMessage('');
     
-    console.log("Submitting message:", messageToSend);
-    
     try {
-      // First, add the user message to the chat store
-      // This prevents the message from being added twice
-      useChatStore.getState().addMessage({
-        role: 'user',
-        content: messageToSend,
-        timestamp: new Date().toISOString()
-      });
-      
       // Check if the message is asking about uploading a file
       const uploadFileKeywords = ['upload', 'file', 'import', 'network file', 'アップロード', 'ファイル', 'インポート', 'ネットワークファイル'];
       const isAskingAboutUpload = uploadFileKeywords.some(keyword => messageToSend.toLowerCase().includes(keyword));
       
       if (isAskingAboutUpload) {
+        // First, add the user message to the chat store
+        addMessage({
+          role: 'user',
+          content: messageToSend,
+          timestamp: new Date().toISOString()
+        });
+        
         // Add assistant response about file upload
-        useChatStore.getState().addMessage({
+        addMessage({
           role: 'assistant',
           content: `You can upload a network file by clicking the "Upload Network File" button at the top of the network visualization panel. Supported formats include GraphML, GEXF, GML, JSON, Pajek, EdgeList, and AdjList. You can also drag and drop a file directly onto the visualization area.`,
           timestamp: new Date().toISOString()
         });
-      } else if (messageToSend.toLowerCase().includes('recommend') && messageToSend.toLowerCase().includes('layout')) {
-        // Handle layout recommendation
-        try {
-          const result = await recommendLayoutAndApply(messageToSend);
-          
-          if (result) {
-            useChatStore.getState().addMessage({
-              role: 'assistant',
-              content: `Based on your request, I recommend using the ${recommendation.recommended_layout} layout. ${recommendation.recommendation_reason} I've applied this layout to the network.`,
-              timestamp: new Date().toISOString(),
-              networkUpdate: {
-                type: 'layout',
-                layout: recommendation.recommended_layout,
-                layoutParams: recommendation.recommended_parameters || {}
-              }
-            });
-          } else {
-            useChatStore.getState().addMessage({
-              role: 'assistant',
-              content: "I couldn't recommend a layout based on your request. Please try again with more specific details about what you want to visualize.",
-              timestamp: new Date().toISOString(),
-              error: true
-            });
-          }
-        } catch (error) {
-          console.error("Error recommending layout:", error);
-          
-          useChatStore.getState().addMessage({
-            role: 'assistant',
-            content: "I'm sorry, I encountered an error trying to recommend a layout. Please try again later.",
-            timestamp: new Date().toISOString(),
-            error: true
-          });
-        }
       } else {
-        // For other messages, generate a response
-        // Note: We're not using sendMessage here to avoid adding the user message twice
-        try {
-          // Simulate a response since we're not using an API
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // Create a simple response based on the message content
-          let responseContent = "I'm sorry, I don't understand that request. You can ask me about network visualization or uploading network files.";
-          
-          // Simple keyword-based responses
-          if (messageToSend.toLowerCase().includes('layout') || messageToSend.toLowerCase().includes('visualize')) {
-            responseContent = "You can change the network layout using the dropdown menu at the top of the visualization panel. Available layouts include Spring, Circular, Random, Spectral, and others.";
-          } else if (messageToSend.toLowerCase().includes('centrality') || messageToSend.toLowerCase().includes('measure')) {
-            responseContent = "You can apply centrality measures to the network using the 'Apply Centrality' dropdown. Available measures include Degree, Closeness, Betweenness, Eigenvector, and PageRank.";
-          }
-          
-          // Add assistant response
-          useChatStore.getState().addMessage({
-            role: 'assistant',
-            content: responseContent,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          console.error("Error generating response:", error);
-          
-          useChatStore.getState().addMessage({
-            role: 'assistant',
-            content: "Sorry, I encountered an error processing your request. Please try again later.",
-            timestamp: new Date().toISOString(),
-            error: true
-          });
-        }
+        // For all other messages, use the sendMessage function from chatStore
+        await sendMessage(messageToSend);
       }
     } catch (error) {
       console.error("Error sending message:", error);
       
-      useChatStore.getState().addMessage({
-        role: 'assistant',
-        content: "Sorry, I encountered an error processing your request. Please try again later.",
-        timestamp: new Date().toISOString(),
-        error: true
-      });
-    } finally {
-      // Clear typing indicator
-      useChatStore.getState().setTypingIndicator(false);
+      // Only add error message if user message was already added
+      if (messages.some(m => m.role === 'user' && m.content === messageToSend)) {
+        addMessage({
+          role: 'assistant',
+          content: "Sorry, I encountered an error processing your request. Please try again later.",
+          timestamp: new Date().toISOString(),
+          error: true
+        });
+      }
     }
   };
   
   return (
     <div className="h-screen flex flex-col">
-      {/* Super prominent upload button fixed at the top of the screen */}
-      <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[9999] shadow-2xl">
-        <FileUploadButton 
-          className="bg-red-600 hover:bg-red-700 text-white font-bold py-6 px-10 rounded-lg shadow-xl transform hover:scale-105 transition-transform duration-200 flex items-center border-4 border-yellow-300 animate-pulse" 
-          buttonText="UPLOAD NETWORK FILE" 
-          onFileUpload={handleFileUpload}
-        />
-      </div>
       
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
         {/* Left side - Chat panel */}
-        <div className="w-1/3 flex flex-col bg-white border-r border-gray-200">
+        <div className="w-full md:w-2/5 lg:w-1/3 flex flex-col bg-white border-r border-gray-200">
           <div className="p-4 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-800">Network Chat</h2>
             <p className="text-sm text-gray-600">
@@ -377,31 +336,6 @@ const NetworkChatPage = () => {
           
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {/* Debug message count */}
-            <div className="text-xs text-gray-500 mb-2">
-              Messages: {messages.length}
-            </div>
-            
-            {/* Emergency file upload button in chat panel */}
-            <div className="sticky top-0 mb-4 p-3 bg-red-100 border-4 border-red-500 rounded-lg animate-pulse z-[9999]">
-              <div className="font-bold text-red-700 mb-2 text-center text-lg">UPLOAD NETWORK FILE</div>
-              <FileUploadButton 
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-4 px-6 rounded-lg shadow-xl transform hover:scale-105 transition-transform duration-200 flex items-center justify-center" 
-                buttonText="SELECT FILE" 
-                onFileUpload={handleFileUpload}
-              />
-            </div>
-            
-            {/* Debug information */}
-            <div className="mb-4 p-3 bg-yellow-100 border-2 border-yellow-500 rounded-lg">
-              <div className="font-bold text-yellow-700 mb-2">Debug Information</div>
-              <div className="text-sm">
-                <p>Messages count: {messages.length}</p>
-                <p>Messages array: {JSON.stringify(messages)}</p>
-                <p>Is processing: {isProcessing ? 'Yes' : 'No'}</p>
-              </div>
-            </div>
-            
             {messages.map((message, index) => (
               <div 
                 key={index} 
@@ -459,13 +393,14 @@ const NetworkChatPage = () => {
           
           {/* Input area */}
           <div className="p-4 border-t border-gray-200">
-            <form onSubmit={handleSubmit} className="flex">
+            <form 
+              onSubmit={handleSubmit} 
+              className="flex"
+            >
               <input
                 type="text"
                 value={inputMessage}
                 onChange={(e) => setInputMessage(e.target.value)}
-                onCompositionStart={() => setIsComposing(true)}
-                onCompositionEnd={() => setIsComposing(false)}
                 placeholder="Type your message..."
                 className="flex-1 px-4 py-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 disabled={isProcessing}
@@ -487,8 +422,18 @@ const NetworkChatPage = () => {
         </div>
         
         {/* Right side - Network visualization panel */}
-        <div className="flex-1 flex flex-col bg-white">
-          <div className="p-4 border-b border-gray-200 flex justify-between items-center">
+        <div className="w-full md:flex-1 flex flex-col bg-white">
+          {/* Fixed position upload button for mobile */}
+          <div className="md:hidden fixed bottom-4 right-4 z-10">
+            <FileUploadButton 
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-3 rounded-full shadow-lg flex items-center justify-center" 
+              buttonText="Upload" 
+              onFileUpload={handleFileUpload}
+              iconOnly={true}
+            />
+          </div>
+          
+          <div className="p-4 border-b border-gray-200 flex flex-wrap justify-between items-center gap-2">
             <div>
               <h2 className="text-lg font-semibold text-gray-800">Network Visualization</h2>
               <p className="text-sm text-gray-600">
@@ -497,21 +442,12 @@ const NetworkChatPage = () => {
             </div>
             
             {/* Control buttons */}
-            <div className="flex space-x-2">
-              {/* File upload button - Make it extremely prominent with fixed position */}
-              <div className="mr-4 relative z-10">
+            <div className="flex flex-wrap gap-2 items-center">
+              {/* Single file upload button with proper styling - hidden on mobile */}
+              <div className="hidden md:block">
                 <FileUploadButton 
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transform hover:scale-105 transition-transform duration-200 flex items-center border-2 border-blue-300 animate-pulse" 
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md shadow-md flex items-center space-x-2" 
                   buttonText="Upload Network File" 
-                  onFileUpload={handleFileUpload}
-                />
-              </div>
-              
-              {/* Fixed position upload button for better visibility */}
-              <div className="fixed top-20 right-4 z-[9999] shadow-2xl">
-                <FileUploadButton 
-                  className="bg-red-600 hover:bg-red-700 text-white font-bold py-6 px-10 rounded-lg shadow-xl transform hover:scale-105 transition-transform duration-200 flex items-center border-4 border-yellow-300 animate-pulse" 
-                  buttonText="Upload Network" 
                   onFileUpload={handleFileUpload}
                 />
               </div>
@@ -523,7 +459,7 @@ const NetworkChatPage = () => {
                   setLayout(e.target.value);
                   calculateLayout();
                 }}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
               >
                 <option value="spring">Spring</option>
                 <option value="circular">Circular</option>
@@ -541,7 +477,7 @@ const NetworkChatPage = () => {
                     applyCentrality(e.target.value);
                   }
                 }}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                 defaultValue=""
               >
                 <option value="" disabled>Apply Centrality</option>
@@ -561,6 +497,10 @@ const NetworkChatPage = () => {
             onDragLeave={handleDragLeave}
             onDrop={handleFileDrop}
           >
+            {/* Drag and drop instruction */}
+            <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-white bg-opacity-75 px-3 py-1 rounded-full text-sm text-gray-600 shadow-sm border border-gray-200 z-10">
+              Drag & drop network file here
+            </div>
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
                 <div className="flex flex-col items-center">

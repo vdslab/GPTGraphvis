@@ -292,6 +292,18 @@ class MCPClient {
       include_visual_properties: includeVisualProperties
     });
   }
+
+  /**
+   * Process a chat message and execute network operations.
+   * 
+   * @param {string} message - The chat message to process
+   * @returns {Promise<object>} - Response with executed operation result
+   */
+  async processChatMessage(message) {
+    return this.useTool('process_chat_message', {
+      message
+    });
+  }
 }
 
 // Create and export a singleton instance

@@ -9,7 +9,8 @@ import useNetworkStore from '../services/networkStore';
 const FileUploadButton = ({ 
   className = '', 
   buttonText = 'Upload Network File',
-  onFileUpload = null // Add onFileUpload prop with default value of null
+  onFileUpload = null, // Add onFileUpload prop with default value of null
+  iconOnly = false // Add iconOnly prop to show only icon on small screens
 }) => {
   const { uploadNetworkFile } = useNetworkStore();
   const fileInputRef = useRef(null);
@@ -71,9 +72,11 @@ const FileUploadButton = ({
       <button
         onClick={handleButtonClick}
         className={className || "px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center"}
+        aria-label="Upload network file"
+        title="Upload network file"
       >
         <svg 
-          className="w-5 h-5 mr-2" 
+          className={`w-5 h-5 ${iconOnly ? '' : 'mr-2'}`}
           fill="none" 
           stroke="currentColor" 
           viewBox="0 0 24 24" 
@@ -86,7 +89,7 @@ const FileUploadButton = ({
             d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
           />
         </svg>
-        {buttonText}
+        {iconOnly ? null : buttonText}
       </button>
     </div>
   );

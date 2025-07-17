@@ -149,6 +149,17 @@ async def get_manifest():
                     }
                 },
                 "required": ["layout_type"]
+            },
+            {
+                "name": "process_chat_message",
+                "description": "Process a chat message and execute network operations",
+                "parameters": {
+                    "message": {
+                        "type": "string",
+                        "description": "The chat message to process"
+                    }
+                },
+                "required": ["message"]
             }
         ],
         "resources": [

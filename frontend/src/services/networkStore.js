@@ -21,6 +21,12 @@ const useNetworkStore = create((set, get) => ({
   isLoading: false,
   error: null,
   recommendation: null,
+  visualProperties: {
+    node_size: 5,
+    node_color: '#1d4ed8',
+    edge_width: 1,
+    edge_color: '#94a3b8'
+  },
 
   // Set network data
   setNetworkData: (nodes, edges) => {
@@ -63,11 +69,40 @@ const useNetworkStore = create((set, get) => ({
       }
     } catch (error) {
       console.error('Error calculating layout:', error);
-      set({ 
-        isLoading: false, 
-        error: error.message || 'Layout calculation failed'
-      });
-      return false;
+      
+      // Create a fallback layout if MCP layout calculation fails
+      try {
+        console.log("Using fallback layout calculation");
+        
+        // Create simple grid layout as fallback
+        const positions = nodes.map((node, index) => {
+          const cols = Math.ceil(Math.sqrt(nodes.length));
+          const row = Math.floor(index / cols);
+          const col = index % cols;
+          return {
+            id: node.id,
+            label: node.label || node.id,
+            x: (col / cols) * 2 - 1,
+            y: (row / cols) * 2 - 1,
+            size: 5,
+            color: '#1d4ed8'
+          };
+        });
+        
+        set({ 
+          positions,
+          isLoading: false, 
+          error: null
+        });
+        return true;
+      } catch (fallbackError) {
+        console.error('Fallback layout calculation failed:', fallbackError);
+        set({ 
+          isLoading: false, 
+          error: error.message || 'Layout calculation failed'
+        });
+        return false;
+      }
     }
   },
 
@@ -356,6 +391,101 @@ const useNetworkStore = create((set, get) => ({
       set({ 
         isLoading: false, 
         error: error.message || 'Failed to export network as GraphML'
+      });
+      return null;
+    }
+  },
+  
+  // Change visual properties of nodes or edges
+  changeVisualProperties: async (propertyType, propertyValue, propertyMapping = {}) => {
+    set({ isLoading: true, error: null });
+    try {
+      console.log(`Changing visual property ${propertyType} to ${propertyValue}`);
+      
+      // Use MCP client to change visual properties
+      const result = await mcpClient.useTool('change_visual_properties', {
+        property_type: propertyType,
+        property_value: propertyValue,
+        property_mapping: propertyMapping
+      });
+      
+      if (result && result.success) {
+        console.log("Visual properties changed successfully:", result);
+        
+        // Update visual properties in state
+        set(state => ({ 
+          visualProperties: {
+            ...state.visualProperties,
+            [propertyType]: propertyValue
+          },
+          isLoading: false,
+          error: null
+        }));
+        
+        // If it's a node property, update positions
+        if (propertyType === 'node_size' || propertyType === 'node_color') {
+          const attribute = propertyType.split('_')[1]; // 'size' or 'color'
+          const updatedPositions = get().positions.map(node => ({
+            ...node,
+            [attribute]: node.id in propertyMapping ? propertyMapping[node.id] : propertyValue
+          }));
+          
+          set({ positions: updatedPositions });
+        }
+        
+        // If it's an edge property, update edges
+        if (propertyType === 'edge_width' || propertyType === 'edge_color') {
+          const attribute = propertyType.split('_')[1]; // 'width' or 'color'
+          const updatedEdges = get().edges.map(edge => {
+            const edgeKey = `${edge.source}-${edge.target}`;
+            return {
+              ...edge,
+              [attribute]: edgeKey in propertyMapping ? propertyMapping[edgeKey] : propertyValue
+            };
+          });
+          
+          set({ edges: updatedEdges });
+        }
+        
+        return true;
+      } else {
+        throw new Error(result.error || 'Failed to change visual properties');
+      }
+    } catch (error) {
+      console.error("Failed to change visual properties:", error);
+      
+      set({ 
+        isLoading: false, 
+        error: error.message || 'Failed to change visual properties'
+      });
+      return false;
+    }
+  },
+  
+  // Get network information
+  getNetworkInfo: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      console.log("Getting network information");
+      
+      // Use MCP client to get network information
+      const result = await mcpClient.useTool('get_network_info', {});
+      
+      if (result && result.success) {
+        console.log("Network information retrieved successfully:", result);
+        
+        set({ isLoading: false, error: null });
+        
+        return result;
+      } else {
+        throw new Error(result.error || 'Failed to get network information');
+      }
+    } catch (error) {
+      console.error("Failed to get network information:", error);
+      
+      set({ 
+        isLoading: false, 
+        error: error.message || 'Failed to get network information'
       });
       return null;
     }

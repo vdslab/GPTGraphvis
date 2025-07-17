@@ -874,6 +874,400 @@ async def compare_layouts(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e)
         }
 
+# Process chat message
+async def process_chat_message(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process a chat message and execute network operations.
+    
+    Args:
+        message: The chat message to process
+        
+    Returns:
+        Response with executed operation result
+    """
+    try:
+        message = arguments.get("message", "")
+        
+        if not message:
+            return {
+                "success": False,
+                "error": "No message provided"
+            }
+        
+        # Convert message to lowercase for easier matching
+        message_lower = message.lower()
+        
+        # Define patterns for different operations
+        layout_patterns = {
+            "spring": r'\b(spring|スプリング)\b',
+            "circular": r'\b(circular|円形|サークル)\b',
+            "random": r'\b(random|ランダム)\b',
+            "spectral": r'\b(spectral|スペクトル)\b',
+            "shell": r'\b(shell|シェル)\b',
+            "kamada_kawai": r'\b(kamada|kawai|カマダ|カワイ)\b',
+            "fruchterman_reingold": r'\b(fruchterman|reingold|フルクターマン|レインゴールド)\b'
+        }
+        
+        centrality_patterns = {
+            "degree": r'\b(degree|次数|ディグリー)\b',
+            "closeness": r'\b(closeness|近接|クローズネス)\b',
+            "betweenness": r'\b(betweenness|媒介|ビトウィーンネス)\b',
+            "eigenvector": r'\b(eigenvector|固有ベクトル|アイゲンベクトル)\b',
+            "pagerank": r'\b(pagerank|ページランク)\b'
+        }
+        
+        color_patterns = {
+            "red": r'\b(red|赤|レッド)\b',
+            "blue": r'\b(blue|青|ブルー)\b',
+            "green": r'\b(green|緑|グリーン)\b',
+            "yellow": r'\b(yellow|黄|イエロー)\b',
+            "purple": r'\b(purple|紫|パープル)\b',
+            "orange": r'\b(orange|オレンジ)\b',
+            "black": r'\b(black|黒|ブラック)\b',
+            "white": r'\b(white|白|ホワイト)\b'
+        }
+        
+        color_map = {
+            "red": "#ff0000",
+            "blue": "#0000ff",
+            "green": "#00ff00",
+            "yellow": "#ffff00",
+            "purple": "#800080",
+            "orange": "#ffa500",
+            "black": "#000000",
+            "white": "#ffffff"
+        }
+        
+        # Check for layout change requests
+        if "layout" in message_lower or "レイアウト" in message_lower:
+            # Check for layout recommendation request
+            if any(keyword in message_lower for keyword in ["recommend", "suggestion", "おすすめ", "提案"]):
+                try:
+                    result = await recommend_layout({"question": message})
+                    if result and result.get("success"):
+                        # Apply the recommended layout
+                        layout_type = result.get("recommended_layout")
+                        layout_params = result.get("recommended_parameters", {})
+                        
+                        # Apply the layout
+                        layout_result = await change_layout({
+                            "layout_type": layout_type,
+                            "layout_params": layout_params
+                        })
+                        
+                        if layout_result and layout_result.get("success"):
+                            return {
+                                "success": True,
+                                "content": f"Based on your request, I recommend using the {layout_type} layout. {result.get('recommendation_reason')} I've applied this layout to the network.",
+                                "networkUpdate": {
+                                    "type": "layout",
+                                    "layout": layout_type,
+                                    "layoutParams": layout_params
+                                }
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "content": f"I recommend using the {layout_type} layout, but I couldn't apply it. Please try again later."
+                            }
+                    else:
+                        return {
+                            "success": False,
+                            "content": "I couldn't recommend a layout based on your request. Please try again with more specific details about what you want to visualize."
+                        }
+                except Exception as e:
+                    print(f"Error recommending layout: {str(e)}")
+                    return {
+                        "success": False,
+                        "content": "I'm sorry, I encountered an error trying to recommend a layout. Please try again later."
+                    }
+            
+            # Check for specific layout requests
+            for layout_type, pattern in layout_patterns.items():
+                if re.search(pattern, message_lower, re.IGNORECASE):
+                    try:
+                        result = await change_layout({
+                            "layout_type": layout_type,
+                            "layout_params": {}
+                        })
+                        
+                        if result and result.get("success"):
+                            return {
+                                "success": True,
+                                "content": f"I've changed the layout to {layout_type}. The network visualization has been updated.",
+                                "networkUpdate": {
+                                    "type": "layout",
+                                    "layout": layout_type
+                                }
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "content": f"I couldn't apply the {layout_type} layout. Please try again later."
+                            }
+                    except Exception as e:
+                        print(f"Error applying {layout_type} layout: {str(e)}")
+                        return {
+                            "success": False,
+                            "content": f"I'm sorry, I encountered an error trying to apply the {layout_type} layout. Please try again later."
+                        }
+            
+            # If no specific layout was mentioned but "layout" was
+            return {
+                "success": True,
+                "content": "You can use the following layouts: Spring, Circular, Random, Spectral, Shell, Kamada-Kawai, and Fruchterman-Reingold. Just ask me to change to any of these layouts."
+            }
+        
+        # Check for centrality requests
+        if any(keyword in message_lower for keyword in ["centrality", "中心性", "センタリティ", "measure", "指標"]):
+            for centrality_type, pattern in centrality_patterns.items():
+                if re.search(pattern, message_lower, re.IGNORECASE):
+                    try:
+                        # Calculate centrality
+                        centrality_result = await calculate_node_centrality({
+                            "centrality_type": centrality_type
+                        })
+                        
+                        if centrality_result and centrality_result.get("success"):
+                            # Update node sizes and colors based on centrality
+                            centrality_values = centrality_result.get("centrality_values", {})
+                            
+                            # Find max centrality value for normalization
+                            max_value = max(centrality_values.values()) if centrality_values else 1.0
+                            
+                            # Create mapping of node IDs to sizes and colors
+                            size_mapping = {}
+                            color_mapping = {}
+                            
+                            for node_id, value in centrality_values.items():
+                                # Scale size between 5 and 15
+                                size_mapping[node_id] = 5 + (value / max_value) * 10
+                                
+                                # Generate color from blue (low) to red (high)
+                                ratio = value / max_value
+                                r = int(255 * ratio)
+                                b = int(255 * (1 - ratio))
+                                color_mapping[node_id] = f"rgb({r}, 70, {b})"
+                            
+                            # Apply size mapping
+                            await change_visual_properties({
+                                "property_type": "node_size",
+                                "property_value": 5,  # Default size
+                                "property_mapping": size_mapping
+                            })
+                            
+                            # Apply color mapping
+                            await change_visual_properties({
+                                "property_type": "node_color",
+                                "property_value": "#1d4ed8",  # Default color
+                                "property_mapping": color_mapping
+                            })
+                            
+                            return {
+                                "success": True,
+                                "content": f"I've applied {centrality_type} centrality to the network. Nodes are now sized and colored based on their {centrality_type} centrality values.",
+                                "networkUpdate": {
+                                    "type": "centrality",
+                                    "centralityType": centrality_type
+                                }
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "content": f"I couldn't apply {centrality_type} centrality. Please try again later."
+                            }
+                    except Exception as e:
+                        print(f"Error applying {centrality_type} centrality: {str(e)}")
+                        return {
+                            "success": False,
+                            "content": f"I'm sorry, I encountered an error trying to apply {centrality_type} centrality. Please try again later."
+                        }
+            
+            # If no specific centrality was mentioned but "centrality" was
+            return {
+                "success": True,
+                "content": "You can apply the following centrality measures: Degree, Closeness, Betweenness, Eigenvector, and PageRank. Just ask me to apply any of these centrality measures."
+            }
+        
+        # Check for color change requests
+        if any(keyword in message_lower for keyword in ["color", "色", "カラー"]):
+            # Check if it's for nodes or edges
+            is_for_nodes = "node" in message_lower or "ノード" in message_lower or \
+                          (not "edge" in message_lower and not "エッジ" in message_lower)
+            
+            target = "nodes" if is_for_nodes else "edges"
+            property_type = "node_color" if is_for_nodes else "edge_color"
+            
+            # Check for specific colors
+            for color_name, pattern in color_patterns.items():
+                if re.search(pattern, message_lower, re.IGNORECASE):
+                    try:
+                        result = await change_visual_properties({
+                            "property_type": property_type,
+                            "property_value": color_map[color_name]
+                        })
+                        
+                        if result and result.get("success"):
+                            return {
+                                "success": True,
+                                "content": f"I've changed the color of the {target} to {color_name}.",
+                                "networkUpdate": {
+                                    "type": "visualProperty",
+                                    "propertyType": property_type,
+                                    "propertyValue": color_map[color_name]
+                                }
+                            }
+                        else:
+                            return {
+                                "success": False,
+                                "content": f"I couldn't change the color of the {target} to {color_name}. Please try again later."
+                            }
+                    except Exception as e:
+                        print(f"Error changing {target} color to {color_name}: {str(e)}")
+                        return {
+                            "success": False,
+                            "content": f"I'm sorry, I encountered an error trying to change the color of the {target} to {color_name}. Please try again later."
+                        }
+            
+            # If no specific color was mentioned but "color" was
+            return {
+                "success": True,
+                "content": f"You can change the color of {target} to: Red, Blue, Green, Yellow, Purple, Orange, Black, or White. Just ask me to change the color to any of these colors."
+            }
+        
+        # Check for size change requests
+        if any(keyword in message_lower for keyword in ["size", "サイズ", "大きさ", "太さ"]):
+            # Check if it's for nodes or edges
+            is_for_nodes = "node" in message_lower or "ノード" in message_lower or \
+                          (not "edge" in message_lower and not "エッジ" in message_lower)
+            
+            target = "nodes" if is_for_nodes else "edges"
+            property_type = "node_size" if is_for_nodes else "edge_width"
+            
+            # Check for increase or decrease
+            is_increase = any(keyword in message_lower for keyword in ["increase", "larger", "bigger", "大きく", "太く"])
+            is_decrease = any(keyword in message_lower for keyword in ["decrease", "smaller", "thinner", "小さく", "細く"])
+            
+            # Get current value
+            current_value = network_state["visual_properties"][property_type]
+            
+            # Calculate new value
+            new_value = current_value
+            
+            if is_increase:
+                new_value = min(20 if is_for_nodes else 5, current_value * 1.5)
+            elif is_decrease:
+                new_value = max(2 if is_for_nodes else 0.5, current_value / 1.5)
+            else:
+                # Try to extract a specific size value
+                size_match = re.search(r'\b(\d+(\.\d+)?)\b', message_lower)
+                if size_match:
+                    new_value = float(size_match.group(1))
+                    # Ensure reasonable limits
+                    if is_for_nodes:
+                        new_value = max(2, min(20, new_value))
+                    else:
+                        new_value = max(0.5, min(5, new_value))
+            
+            # Only proceed if the value has changed
+            if new_value != current_value:
+                try:
+                    result = await change_visual_properties({
+                        "property_type": property_type,
+                        "property_value": new_value
+                    })
+                    
+                    if result and result.get("success"):
+                        return {
+                            "success": True,
+                            "content": f"I've changed the size of the {target} to {new_value}.",
+                            "networkUpdate": {
+                                "type": "visualProperty",
+                                "propertyType": property_type,
+                                "propertyValue": new_value
+                            }
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "content": f"I couldn't change the size of the {target}. Please try again later."
+                        }
+                except Exception as e:
+                    print(f"Error changing {target} size: {str(e)}")
+                    return {
+                        "success": False,
+                        "content": f"I'm sorry, I encountered an error trying to change the size of the {target}. Please try again later."
+                    }
+            
+            # If no specific size change was requested but "size" was mentioned
+            return {
+                "success": True,
+                "content": f"You can ask me to increase or decrease the size of {target}, or specify a specific size value."
+            }
+        
+        # Check for network information request
+        if any(keyword in message_lower for keyword in ["info", "information", "statistics", "stats", "情報", "統計"]):
+            try:
+                result = await get_network_info({})
+                
+                if result and result.get("success"):
+                    info = result.get("network_info", {})
+                    return {
+                        "success": True,
+                        "content": f"""Network Information:
+- Nodes: {info.get('num_nodes')}
+- Edges: {info.get('num_edges')}
+- Density: {info.get('density', 0):.4f}
+- Connected: {'Yes' if info.get('is_connected') else 'No'}
+- Components: {info.get('num_components')}
+- Average Degree: {info.get('avg_degree', 0):.2f}
+- Clustering Coefficient: {info.get('clustering_coefficient', 0):.4f}
+- Current Layout: {info.get('current_layout')}
+- Current Centrality: {info.get('current_centrality') or 'None'}"""
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "content": "I couldn't retrieve network information. Please try again later."
+                    }
+            except Exception as e:
+                print(f"Error getting network information: {str(e)}")
+                return {
+                    "success": False,
+                    "content": "I'm sorry, I encountered an error trying to retrieve network information. Please try again later."
+                }
+        
+        # Check for help request
+        if any(keyword in message_lower for keyword in ["help", "ヘルプ", "使い方", "how to"]):
+            return {
+                "success": True,
+                "content": """Here are the operations you can perform via chat:
+
+1. Change layout: "Use circular layout" or "Apply Fruchterman-Reingold layout"
+2. Get layout recommendation: "Recommend a layout for community detection"
+3. Apply centrality: "Show degree centrality" or "Apply betweenness centrality"
+4. Change colors: "Make nodes red" or "Change edge color to blue"
+5. Change sizes: "Increase node size" or "Make edges thinner"
+6. Get network information: "Show network statistics" or "Display network info"
+
+You can also upload network files using the "Upload Network File" button at the top of the visualization panel."""
+            }
+        
+        # If no operation was recognized
+        return {
+            "success": False,
+            "content": "I'm sorry, I don't understand that request. Type 'help' to see what operations I can perform."
+        }
+    except Exception as e:
+        print(f"Error processing chat message: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            "success": False,
+            "content": "I'm sorry, I encountered an error processing your message. Please try again later.",
+            "error": str(e)
+        }
+
 # Get sample network
 async def get_sample_network(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -946,17 +1340,6 @@ async def recommend_layout(arguments: Dict[str, Any]) -> Dict[str, Any]:
             recommended_layout = "fruchterman_reingold"
             recommended_params = {"k": 0.5, "iterations": 50}
             recommendation_reason = "Fruchterman-Reingold layout is good for visualizing node centrality as it places more central nodes towards the center."
-            
-            # Also recommend calculating centrality
-            recommended_centrality = "degree"
-            if "closeness" in question_lower or "近接" in question_lower:
-                recommended_centrality = "closeness"
-            elif "betweenness" in question_lower or "媒介" in question_lower:
-                recommended_centrality = "betweenness"
-            elif "eigenvector" in question_lower or "固有ベクトル" in question_lower:
-                recommended_centrality = "eigenvector"
-            elif "pagerank" in question_lower:
-                recommended_centrality = "pagerank"
         
         # Check for community-related questions
         elif any(keyword in question_lower for keyword in community_keywords):
@@ -1012,625 +1395,3 @@ async def recommend_layout(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "success": False,
             "error": str(e)
         }
-
-async def export_network_as_graphml(arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Export the current network as GraphML format.
-    
-    Args:
-        include_positions: Whether to include node positions in the GraphML
-        include_visual_properties: Whether to include visual properties in the GraphML
-        
-    Returns:
-        GraphML string representation of the network
-    """
-    try:
-        include_positions = arguments.get("include_positions", True)
-        include_visual_properties = arguments.get("include_visual_properties", True)
-        
-        G = network_state["graph"]
-        
-        if not G:
-            return {
-                "success": False,
-                "error": "No network data available"
-            }
-        
-        # Create a copy of the graph to add attributes
-        export_graph = nx.Graph()
-        
-        # Add nodes with attributes
-        for node in network_state["positions"]:
-            node_attrs = {}
-            
-            # Add label
-            if node.label:
-                node_attrs["label"] = node.label
-            
-            # Add positions if requested
-            if include_positions:
-                node_attrs["x"] = float(node.x)
-                node_attrs["y"] = float(node.y)
-            
-            # Add visual properties if requested
-            if include_visual_properties:
-                node_attrs["size"] = float(node.size) if node.size is not None else 5.0
-                node_attrs["color"] = node.color if node.color else "#1d4ed8"
-            
-            # Add centrality values if available
-            if network_state["centrality_values"] and node.id in network_state["centrality_values"]:
-                node_attrs["centrality"] = float(network_state["centrality_values"][node.id])
-                node_attrs["centrality_type"] = network_state["centrality"]
-            
-            # Add node to export graph
-            export_graph.add_node(node.id, **node_attrs)
-        
-        # Add edges with attributes
-        for edge in network_state["edges"]:
-            edge_attrs = {}
-            
-            # Add visual properties if requested
-            if include_visual_properties:
-                edge_attrs["width"] = float(edge.width) if edge.width is not None else 1.0
-                edge_attrs["color"] = edge.color if edge.color else "#94a3b8"
-            
-            # Add edge to export graph
-            export_graph.add_edge(edge.source, edge.target, **edge_attrs)
-        
-        # Export as GraphML
-        graphml_output = io.StringIO()
-        nx.write_graphml(export_graph, graphml_output)
-        graphml_string = graphml_output.getvalue()
-        
-        return {
-            "success": True,
-            "graphml": graphml_string,
-            "nodes_count": export_graph.number_of_nodes(),
-            "edges_count": export_graph.number_of_edges(),
-            "layout": network_state["layout"],
-            "layout_params": network_state["layout_params"]
-        }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-# Upload network file
-async def upload_network_file(arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Upload a network file and parse it into nodes and edges.
-    
-    Args:
-        file_content: Base64 encoded content of the network file
-        file_name: Name of the file being uploaded
-        file_type: MIME type of the file
-        
-    Returns:
-        Parsed network data
-    """
-    try:
-        file_content = arguments.get("file_content", "")
-        file_name = arguments.get("file_name", "")
-        file_type = arguments.get("file_type", "")
-        
-        if not file_content or not file_name:
-            return {
-                "success": False,
-                "error": "File content and name are required"
-            }
-        
-        # Get file extension
-        file_extension = file_name.split('.')[-1].lower()
-        
-        # Check if file extension is supported
-        supported_formats = ['graphml', 'gexf', 'gml', 'json', 'net', 'edgelist', 'adjlist']
-        if file_extension not in supported_formats:
-            return {
-                "success": False,
-                "error": f"Unsupported file format: {file_extension}. Supported formats: {', '.join(supported_formats)}"
-            }
-        
-        # Decode base64 content
-        import base64
-        try:
-            decoded_content = base64.b64decode(file_content)
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Failed to decode file content: {str(e)}"
-            }
-        
-        # Create a temporary file
-        import tempfile
-        import os
-        
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
-            temp_file.write(decoded_content)
-            temp_file_path = temp_file.name
-        
-        try:
-            # Parse the file based on its extension
-            G = None
-            
-            if file_extension == 'graphml':
-                G = nx.read_graphml(temp_file_path)
-            elif file_extension == 'gexf':
-                G = nx.read_gexf(temp_file_path)
-            elif file_extension == 'gml':
-                G = nx.read_gml(temp_file_path)
-            elif file_extension == 'json':
-                # Try different JSON formats
-                try:
-                    G = nx.node_link_graph(json.load(open(temp_file_path)))
-                except:
-                    try:
-                        G = nx.jit_graph(json.load(open(temp_file_path)))
-                    except:
-                        return {
-                            "success": False,
-                            "error": "Failed to parse JSON file. Supported JSON formats: node-link and JIT"
-                        }
-            elif file_extension == 'net':
-                G = nx.read_pajek(temp_file_path)
-            elif file_extension == 'edgelist':
-                G = nx.read_edgelist(temp_file_path)
-            elif file_extension == 'adjlist':
-                G = nx.read_adjlist(temp_file_path)
-            
-            # Clean up temporary file
-            os.unlink(temp_file_path)
-            
-            if not G:
-                return {
-                    "success": False,
-                    "error": "Failed to parse network file"
-                }
-            
-            # Update network state
-            network_state["graph"] = G
-            
-            # Calculate initial positions
-            pos = nx.spring_layout(G)
-            
-            # Convert to the expected format
-            network_state["positions"] = [
-                Node(
-                    id=str(node),
-                    label=G.nodes[node].get('label', f"Node {node}") if isinstance(G.nodes[node], dict) else f"Node {node}",
-                    x=float(pos[node][0]),
-                    y=float(pos[node][1]),
-                    size=5,
-                    color="#1d4ed8"
-                )
-                for node in G.nodes()
-            ]
-            
-            # Store edges
-            network_state["edges"] = [
-                Edge(
-                    source=str(source),
-                    target=str(target),
-                    width=1,
-                    color="#94a3b8"
-                )
-                for source, target in G.edges()
-            ]
-            
-            return {
-                "success": True,
-                "nodes": [node.dict() for node in network_state["positions"]],
-                "edges": [edge.dict() for edge in network_state["edges"]],
-                "layout": "spring",
-                "layout_params": {},
-                "nodes_count": G.number_of_nodes(),
-                "edges_count": G.number_of_edges(),
-                "file_name": file_name
-            }
-        except Exception as e:
-            # Clean up temporary file
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
-            
-            return {
-                "success": False,
-                "error": f"Failed to parse network file: {str(e)}"
-            }
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-# Map of tool names to their implementations
-mcp_tools = {
-    "update_network": update_network,
-    "upload_network_file": upload_network_file,
-    "change_layout": change_layout,
-    "calculate_centrality": calculate_node_centrality,
-    "highlight_nodes": highlight_nodes,
-    "change_visual_properties": change_visual_properties,
-    "get_network_info": get_network_info,
-    "get_node_info": get_node_info,
-    "save_network": save_network,
-    "load_network": load_network,
-    "list_user_networks": list_user_networks,
-    "apply_community_layout": apply_community_layout,
-    "compare_layouts": compare_layouts,
-    "get_sample_network": get_sample_network,
-    "recommend_layout": recommend_layout,
-    "export_network_as_graphml": export_network_as_graphml
-}
-
-# MCP server FastAPI app
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup: Initialize the network
-    initialize_sample_network()
-    yield
-    # Shutdown: Clean up resources if needed
-    pass
-
-app = FastAPI(lifespan=lifespan)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to your frontend domain
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.post("/mcp/tools/{tool_name}")
-async def execute_tool(
-    tool_name: str,
-    request: MCPToolRequest,
-    current_user: models.User = Depends(auth.get_current_active_user)
-):
-    """
-    Execute an MCP tool.
-    
-    Args:
-        tool_name: Name of the tool to execute
-        request: Tool request with arguments
-        
-    Returns:
-        Tool response with result
-    """
-    if tool_name not in mcp_tools:
-        raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
-    
-    try:
-        result = await mcp_tools[tool_name](request.arguments)
-        return MCPToolResponse(result=result)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/mcp/resources/network")
-async def get_network_resource(
-    current_user: models.User = Depends(auth.get_current_active_user)
-):
-    """
-    Get the current network as an MCP resource.
-    
-    Returns:
-        Network data including nodes and edges
-    """
-    try:
-        return {
-            "nodes": [node.dict() for node in network_state["positions"]],
-            "edges": [edge.dict() for edge in network_state["edges"]],
-            "layout": network_state["layout"],
-            "layout_params": network_state["layout_params"],
-            "centrality": network_state["centrality"],
-            "visual_properties": network_state["visual_properties"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/mcp/manifest")
-async def get_manifest():
-    """
-    Get the MCP server manifest.
-    
-    Returns:
-        MCP server manifest with available tools and resources
-    """
-    return {
-        "name": "network-visualization-mcp",
-        "version": "1.1.0",
-        "description": "MCP server for network visualization with enhanced features",
-        "tools": [
-            {
-                "name": "upload_network_file",
-                "description": "Upload a network file and parse it into nodes and edges",
-                "parameters": {
-                    "file_content": {
-                        "type": "string",
-                        "description": "Base64 encoded content of the network file"
-                    },
-                    "file_name": {
-                        "type": "string",
-                        "description": "Name of the file being uploaded"
-                    },
-                    "file_type": {
-                        "type": "string",
-                        "description": "MIME type of the file"
-                    }
-                },
-                "required": ["file_content", "file_name"]
-            },
-            {
-                "name": "update_network",
-                "description": "Update the network data in the MCP server",
-                "parameters": {
-                    "nodes": {
-                        "type": "array",
-                        "description": "List of nodes",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "id": {
-                                    "type": "string",
-                                    "description": "Node ID"
-                                },
-                                "label": {
-                                    "type": "string",
-                                    "description": "Node label"
-                                },
-                                "x": {
-                                    "type": "number",
-                                    "description": "X coordinate"
-                                },
-                                "y": {
-                                    "type": "number",
-                                    "description": "Y coordinate"
-                                },
-                                "size": {
-                                    "type": "number",
-                                    "description": "Node size"
-                                },
-                                "color": {
-                                    "type": "string",
-                                    "description": "Node color"
-                                }
-                            },
-                            "required": ["id"]
-                        }
-                    },
-                    "edges": {
-                        "type": "array",
-                        "description": "List of edges",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "source": {
-                                    "type": "string",
-                                    "description": "Source node ID"
-                                },
-                                "target": {
-                                    "type": "string",
-                                    "description": "Target node ID"
-                                },
-                                "width": {
-                                    "type": "number",
-                                    "description": "Edge width"
-                                },
-                                "color": {
-                                    "type": "string",
-                                    "description": "Edge color"
-                                }
-                            },
-                            "required": ["source", "target"]
-                        }
-                    }
-                },
-                "required": ["nodes", "edges"]
-            },
-            {
-                "name": "change_layout",
-                "description": "Change the layout algorithm for the network visualization",
-                "parameters": {
-                    "layout_type": {
-                        "type": "string",
-                        "description": "Type of layout algorithm",
-                        "enum": [
-                            "spring", "circular", "random", "spectral", "shell", 
-                            "spiral", "kamada_kawai", "fruchterman_reingold", 
-                            "bipartite", "multipartite", "planar"
-                        ]
-                    },
-                    "layout_params": {
-                        "type": "object",
-                        "description": "Parameters for the layout algorithm"
-                    }
-                },
-                "required": ["layout_type"]
-            },
-            {
-                "name": "calculate_centrality",
-                "description": "Calculate centrality metrics for nodes in the graph",
-                "parameters": {
-                    "centrality_type": {
-                        "type": "string",
-                        "description": "Type of centrality to calculate",
-                        "enum": ["degree", "closeness", "betweenness", "eigenvector", "pagerank"]
-                    }
-                },
-                "required": ["centrality_type"]
-            },
-            {
-                "name": "highlight_nodes",
-                "description": "Highlight specific nodes in the network",
-                "parameters": {
-                    "node_ids": {
-                        "type": "array",
-                        "description": "List of node IDs to highlight",
-                        "items": {
-                            "type": "string"
-                        }
-                    },
-                    "highlight_color": {
-                        "type": "string",
-                        "description": "Color to use for highlighting"
-                    }
-                },
-                "required": ["node_ids"]
-            },
-            {
-                "name": "change_visual_properties",
-                "description": "Change visual properties of nodes or edges",
-                "parameters": {
-                    "property_type": {
-                        "type": "string",
-                        "description": "Type of property to change",
-                        "enum": ["node_size", "node_color", "edge_width", "edge_color"]
-                    },
-                    "property_value": {
-                        "type": "string",
-                        "description": "Value to set for the property"
-                    },
-                    "property_mapping": {
-                        "type": "object",
-                        "description": "Optional mapping of node/edge IDs to property values"
-                    }
-                },
-                "required": ["property_type", "property_value"]
-            },
-            {
-                "name": "get_network_info",
-                "description": "Get information about the current network",
-                "parameters": {}
-            },
-            {
-                "name": "get_node_info",
-                "description": "Get information about specific nodes in the network",
-                "parameters": {
-                    "node_ids": {
-                        "type": "array",
-                        "description": "List of node IDs to get information for",
-                        "items": {
-                            "type": "string"
-                        }
-                    }
-                },
-                "required": ["node_ids"]
-            },
-            {
-                "name": "save_network",
-                "description": "Save the current network data for a user",
-                "parameters": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "ID of the user"
-                    },
-                    "network_name": {
-                        "type": "string",
-                        "description": "Name to save the network as"
-                    }
-                },
-                "required": ["user_id"]
-            },
-            {
-                "name": "load_network",
-                "description": "Load a saved network for a user",
-                "parameters": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "ID of the user"
-                    },
-                    "network_name": {
-                        "type": "string",
-                        "description": "Name of the network to load"
-                    }
-                },
-                "required": ["user_id"]
-            },
-            {
-                "name": "list_user_networks",
-                "description": "List all saved networks for a user",
-                "parameters": {
-                    "user_id": {
-                        "type": "string",
-                        "description": "ID of the user"
-                    }
-                },
-                "required": ["user_id"]
-            },
-            {
-                "name": "apply_community_layout",
-                "description": "Apply a layout algorithm based on community detection",
-                "parameters": {
-                    "algorithm": {
-                        "type": "string",
-                        "description": "Community detection algorithm to use",
-                        "enum": ["louvain", "greedy_modularity"]
-                    },
-                    "layout_params": {
-                        "type": "object",
-                        "description": "Parameters for the layout algorithm"
-                    }
-                },
-                "required": []
-            },
-            {
-                "name": "compare_layouts",
-                "description": "Compare different layout algorithms for the current network",
-                "parameters": {
-                    "layouts": {
-                        "type": "array",
-                        "description": "List of layout algorithms to compare",
-                        "items": {
-                            "type": "string",
-                            "enum": [
-                                "spring", "circular", "random", "spectral", "shell", 
-                                "spiral", "kamada_kawai", "fruchterman_reingold", 
-                                "bipartite", "multipartite", "planar", "community"
-                            ]
-                        }
-                    }
-                },
-                "required": []
-            },
-            {
-                "name": "get_sample_network",
-                "description": "Get a sample network (Zachary's Karate Club)",
-                "parameters": {},
-                "required": []
-            },
-            {
-                "name": "recommend_layout",
-                "description": "Recommend a layout algorithm based on user's question or network properties",
-                "parameters": {
-                    "question": {
-                        "type": "string",
-                        "description": "User's question about visualization"
-                    }
-                },
-                "required": ["question"]
-            },
-            {
-                "name": "export_network_as_graphml",
-                "description": "Export the current network as GraphML format",
-                "parameters": {
-                    "include_positions": {
-                        "type": "boolean",
-                        "description": "Whether to include node positions in the GraphML"
-                    },
-                    "include_visual_properties": {
-                        "type": "boolean",
-                        "description": "Whether to include visual properties in the GraphML"
-                    }
-                },
-                "required": []
-            }
-        ],
-        "resources": [
-            {
-                "name": "network",
-                "description": "Current network data including nodes and edges",
-                "uri": "/mcp/resources/network"
-            }
-        ]
-    }

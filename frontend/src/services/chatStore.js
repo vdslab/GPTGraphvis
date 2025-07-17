@@ -1,10 +1,372 @@
 import { create } from 'zustand';
+import useNetworkStore from './networkStore';
+import mcpClient from './mcpClient';
 
 const useChatStore = create((set, get) => ({
   messages: [],
   isProcessing: false,
   error: null,
   typingTimeout: null,
+
+  // Parse and execute network operations from chat messages
+  executeNetworkOperation: async (message) => {
+    console.log("Executing network operation for message:", message);
+    const messageLower = message.toLowerCase();
+    
+    // Get network store functions
+    const networkStore = useNetworkStore.getState();
+    
+    // Define patterns for different operations
+    const layoutPatterns = {
+      spring: /\b(spring|スプリング)\b/i,
+      circular: /\b(circular|円形|サークル)\b/i,
+      random: /\b(random|ランダム)\b/i,
+      spectral: /\b(spectral|スペクトル)\b/i,
+      shell: /\b(shell|シェル)\b/i,
+      kamada_kawai: /\b(kamada|kawai|カマダ|カワイ)\b/i,
+      fruchterman_reingold: /\b(fruchterman|reingold|フルクターマン|レインゴールド)\b/i
+    };
+    
+    const centralityPatterns = {
+      degree: /\b(degree|次数|ディグリー)\b/i,
+      closeness: /\b(closeness|近接|クローズネス)\b/i,
+      betweenness: /\b(betweenness|媒介|ビトウィーンネス)\b/i,
+      eigenvector: /\b(eigenvector|固有ベクトル|アイゲンベクトル)\b/i,
+      pagerank: /\b(pagerank|ページランク)\b/i
+    };
+    
+    const colorPatterns = {
+      red: /\b(red|赤|レッド)\b/i,
+      blue: /\b(blue|青|ブルー)\b/i,
+      green: /\b(green|緑|グリーン)\b/i,
+      yellow: /\b(yellow|黄|イエロー)\b/i,
+      purple: /\b(purple|紫|パープル)\b/i,
+      orange: /\b(orange|オレンジ)\b/i,
+      black: /\b(black|黒|ブラック)\b/i,
+      white: /\b(white|白|ホワイト)\b/i
+    };
+    
+    const colorMap = {
+      red: '#ff0000',
+      blue: '#0000ff',
+      green: '#00ff00',
+      yellow: '#ffff00',
+      purple: '#800080',
+      orange: '#ffa500',
+      black: '#000000',
+      white: '#ffffff'
+    };
+    
+    // Check for layout change requests
+    if (messageLower.includes('layout') || messageLower.includes('レイアウト')) {
+      // Check for layout recommendation request
+      if (messageLower.includes('recommend') || messageLower.includes('suggestion') || 
+          messageLower.includes('おすすめ') || messageLower.includes('提案')) {
+        try {
+          const result = await networkStore.recommendLayoutAndApply(message);
+          if (result) {
+            return {
+              success: true,
+              content: `Based on your request, I recommend using the ${networkStore.recommendation.recommended_layout} layout. ${networkStore.recommendation.recommendation_reason} I've applied this layout to the network.`,
+              networkUpdate: {
+                type: 'layout',
+                layout: networkStore.recommendation.recommended_layout,
+                layoutParams: networkStore.recommendation.recommended_parameters || {}
+              }
+            };
+          } else {
+            return {
+              success: false,
+              content: "I couldn't recommend a layout based on your request. Please try again with more specific details about what you want to visualize."
+            };
+          }
+        } catch (error) {
+          console.error("Error recommending layout:", error);
+          return {
+            success: false,
+            content: "I'm sorry, I encountered an error trying to recommend a layout. Please try again later."
+          };
+        }
+      }
+      
+      // Check for specific layout requests
+      for (const [layoutType, pattern] of Object.entries(layoutPatterns)) {
+        if (pattern.test(messageLower)) {
+          try {
+            networkStore.setLayout(layoutType);
+            const result = await networkStore.calculateLayout();
+            
+            if (result) {
+              return {
+                success: true,
+                content: `I've changed the layout to ${layoutType}. The network visualization has been updated.`,
+                networkUpdate: {
+                  type: 'layout',
+                  layout: layoutType
+                }
+              };
+            } else {
+              return {
+                success: false,
+                content: `I couldn't apply the ${layoutType} layout. Please try again later.`
+              };
+            }
+          } catch (error) {
+            console.error(`Error applying ${layoutType} layout:`, error);
+            return {
+              success: false,
+              content: `I'm sorry, I encountered an error trying to apply the ${layoutType} layout. Please try again later.`
+            };
+          }
+        }
+      }
+      
+      // If no specific layout was mentioned but "layout" was
+      return {
+        success: true,
+        content: "You can use the following layouts: Spring, Circular, Random, Spectral, Shell, Kamada-Kawai, and Fruchterman-Reingold. Just ask me to change to any of these layouts."
+      };
+    }
+    
+    // Check for centrality requests
+    if (messageLower.includes('centrality') || messageLower.includes('中心性') || 
+        messageLower.includes('センタリティ') || messageLower.includes('measure') || 
+        messageLower.includes('指標')) {
+      
+      for (const [centralityType, pattern] of Object.entries(centralityPatterns)) {
+        if (pattern.test(messageLower)) {
+          try {
+            const result = await networkStore.applyCentrality(centralityType);
+            
+            if (result) {
+              return {
+                success: true,
+                content: `I've applied ${centralityType} centrality to the network. Nodes are now sized and colored based on their ${centralityType} centrality values.`,
+                networkUpdate: {
+                  type: 'centrality',
+                  centralityType: centralityType
+                }
+              };
+            } else {
+              return {
+                success: false,
+                content: `I couldn't apply ${centralityType} centrality. Please try again later.`
+              };
+            }
+          } catch (error) {
+            console.error(`Error applying ${centralityType} centrality:`, error);
+            return {
+              success: false,
+              content: `I'm sorry, I encountered an error trying to apply ${centralityType} centrality. Please try again later.`
+            };
+          }
+        }
+      }
+      
+      // If no specific centrality was mentioned but "centrality" was
+      return {
+        success: true,
+        content: "You can apply the following centrality measures: Degree, Closeness, Betweenness, Eigenvector, and PageRank. Just ask me to apply any of these centrality measures."
+      };
+    }
+    
+    // Check for color change requests
+    if (messageLower.includes('color') || messageLower.includes('色') || 
+        messageLower.includes('カラー')) {
+      
+      // Check if it's for nodes or edges
+      const isForNodes = messageLower.includes('node') || messageLower.includes('ノード') || 
+                         !messageLower.includes('edge') && !messageLower.includes('エッジ');
+      
+      const target = isForNodes ? 'nodes' : 'edges';
+      const propertyType = isForNodes ? 'node_color' : 'edge_color';
+      
+      // Check for specific colors
+      for (const [colorName, pattern] of Object.entries(colorPatterns)) {
+        if (pattern.test(messageLower)) {
+          try {
+            // Use MCP client to change visual properties
+            const result = await networkStore.changeVisualProperties(propertyType, colorMap[colorName]);
+            
+            if (result) {
+              return {
+                success: true,
+                content: `I've changed the color of the ${target} to ${colorName}.`,
+                networkUpdate: {
+                  type: 'visualProperty',
+                  propertyType: propertyType,
+                  propertyValue: colorMap[colorName]
+                }
+              };
+            } else {
+              return {
+                success: false,
+                content: `I couldn't change the color of the ${target} to ${colorName}. Please try again later.`
+              };
+            }
+          } catch (error) {
+            console.error(`Error changing ${target} color to ${colorName}:`, error);
+            return {
+              success: false,
+              content: `I'm sorry, I encountered an error trying to change the color of the ${target} to ${colorName}. Please try again later.`
+            };
+          }
+        }
+      }
+      
+      // If no specific color was mentioned but "color" was
+      return {
+        success: true,
+        content: `You can change the color of ${target} to: Red, Blue, Green, Yellow, Purple, Orange, Black, or White. Just ask me to change the color to any of these colors.`
+      };
+    }
+    
+    // Check for size change requests
+    if (messageLower.includes('size') || messageLower.includes('サイズ') || 
+        messageLower.includes('大きさ') || messageLower.includes('太さ')) {
+      
+      // Check if it's for nodes or edges
+      const isForNodes = messageLower.includes('node') || messageLower.includes('ノード') || 
+                         !messageLower.includes('edge') && !messageLower.includes('エッジ');
+      
+      const target = isForNodes ? 'nodes' : 'edges';
+      const propertyType = isForNodes ? 'node_size' : 'edge_width';
+      
+      // Check for increase or decrease
+      const isIncrease = messageLower.includes('increase') || messageLower.includes('larger') || 
+                         messageLower.includes('bigger') || messageLower.includes('大きく') || 
+                         messageLower.includes('太く');
+      
+      const isDecrease = messageLower.includes('decrease') || messageLower.includes('smaller') || 
+                         messageLower.includes('thinner') || messageLower.includes('小さく') || 
+                         messageLower.includes('細く');
+      
+      // Get current value and calculate new value
+      const currentValue = isForNodes ? 
+        networkStore.visualProperties?.node_size || 5 : 
+        networkStore.visualProperties?.edge_width || 1;
+      
+      let newValue = currentValue;
+      
+      if (isIncrease) {
+        newValue = isForNodes ? Math.min(20, currentValue * 1.5) : Math.min(5, currentValue * 1.5);
+      } else if (isDecrease) {
+        newValue = isForNodes ? Math.max(2, currentValue / 1.5) : Math.max(0.5, currentValue / 1.5);
+      } else {
+        // Try to extract a specific size value
+        const sizeMatch = messageLower.match(/\b(\d+(\.\d+)?)\b/);
+        if (sizeMatch) {
+          newValue = parseFloat(sizeMatch[1]);
+          // Ensure reasonable limits
+          if (isForNodes) {
+            newValue = Math.max(2, Math.min(20, newValue));
+          } else {
+            newValue = Math.max(0.5, Math.min(5, newValue));
+          }
+        }
+      }
+      
+      // Only proceed if the value has changed
+      if (newValue !== currentValue) {
+        try {
+          // Use MCP client to change visual properties
+          const result = await networkStore.changeVisualProperties(propertyType, newValue);
+          
+          if (result) {
+            return {
+              success: true,
+              content: `I've changed the size of the ${target} to ${newValue}.`,
+              networkUpdate: {
+                type: 'visualProperty',
+                propertyType: propertyType,
+                propertyValue: newValue
+              }
+            };
+          } else {
+            return {
+              success: false,
+              content: `I couldn't change the size of the ${target}. Please try again later.`
+            };
+          }
+        } catch (error) {
+          console.error(`Error changing ${target} size:`, error);
+          return {
+            success: false,
+            content: `I'm sorry, I encountered an error trying to change the size of the ${target}. Please try again later.`
+          };
+        }
+      }
+      
+      // If no specific size change was requested but "size" was mentioned
+      return {
+        success: true,
+        content: `You can ask me to increase or decrease the size of ${target}, or specify a specific size value.`
+      };
+    }
+    
+    // Check for network information request
+    if (messageLower.includes('info') || messageLower.includes('information') || 
+        messageLower.includes('statistics') || messageLower.includes('stats') || 
+        messageLower.includes('情報') || messageLower.includes('統計')) {
+      
+      try {
+        const result = await networkStore.getNetworkInfo();
+        
+        if (result && result.success) {
+          const info = result.network_info;
+          return {
+            success: true,
+            content: `Network Information:
+- Nodes: ${info.num_nodes}
+- Edges: ${info.num_edges}
+- Density: ${info.density.toFixed(4)}
+- Connected: ${info.is_connected ? 'Yes' : 'No'}
+- Components: ${info.num_components}
+- Average Degree: ${info.avg_degree.toFixed(2)}
+- Clustering Coefficient: ${info.clustering_coefficient.toFixed(4)}
+- Current Layout: ${info.current_layout}
+- Current Centrality: ${info.current_centrality || 'None'}`
+          };
+        } else {
+          return {
+            success: false,
+            content: "I couldn't retrieve network information. Please try again later."
+          };
+        }
+      } catch (error) {
+        console.error("Error getting network information:", error);
+        return {
+          success: false,
+          content: "I'm sorry, I encountered an error trying to retrieve network information. Please try again later."
+        };
+      }
+    }
+    
+    // Check for help request
+    if (messageLower.includes('help') || messageLower.includes('ヘルプ') || 
+        messageLower.includes('使い方') || messageLower.includes('how to')) {
+      
+      return {
+        success: true,
+        content: `Here are the operations you can perform via chat:
+
+1. Change layout: "Use circular layout" or "Apply Fruchterman-Reingold layout"
+2. Get layout recommendation: "Recommend a layout for community detection"
+3. Apply centrality: "Show degree centrality" or "Apply betweenness centrality"
+4. Change colors: "Make nodes red" or "Change edge color to blue"
+5. Change sizes: "Increase node size" or "Make edges thinner"
+6. Get network information: "Show network statistics" or "Display network info"
+
+You can also upload network files using the "Upload Network File" button at the top of the visualization panel.`
+      };
+    }
+    
+    // If no operation was recognized
+    return {
+      success: false,
+      content: "I'm sorry, I don't understand that request. Type 'help' to see what operations I can perform."
+    };
+  },
 
   // Send a message to the chat API
   sendMessage: async (message) => {
@@ -21,7 +383,6 @@ const useChatStore = create((set, get) => ({
     console.log("Adding user message to chat:", userMessage);
     
     // First add the user message to the state directly
-    // This is a more direct approach to ensure the message is added
     const currentMessages = [...messages];
     const updatedMessagesWithUser = [...currentMessages, userMessage];
     
@@ -35,26 +396,24 @@ const useChatStore = create((set, get) => ({
     console.log("After direct set, messages:", get().messages);
     
     try {
-      console.log("Preparing to send message to API:", message);
-      console.log("Message history length:", messages.length);
+      console.log("Processing message:", message);
       
-      // Simulate a response since we're not using an API
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Use MCP server to process chat message
+      const operationResult = await mcpClient.processChatMessage(message);
+      console.log("MCP operation result:", operationResult);
       
-      console.log("Generating simulated response for message:", message);
-      
-      // Create a simple response based on the message content
+      // Create response based on operation result
       let responseContent = "I'm sorry, I don't understand that request. You can ask me about network visualization or uploading network files.";
       let networkUpdate = null;
-      let visualizationUpdate = null;
       
-      // Simple keyword-based responses
-      if (message.toLowerCase().includes('upload') || message.toLowerCase().includes('file')) {
-        responseContent = "You can upload a network file by clicking the 'Upload Network File' button at the top of the visualization panel. Supported formats include GraphML, GEXF, GML, JSON, and others.";
-      } else if (message.toLowerCase().includes('layout') || message.toLowerCase().includes('visualize')) {
-        responseContent = "You can change the network layout using the dropdown menu at the top of the visualization panel. Available layouts include Spring, Circular, Random, Spectral, and others.";
-      } else if (message.toLowerCase().includes('centrality') || message.toLowerCase().includes('measure')) {
-        responseContent = "You can apply centrality measures to the network using the 'Apply Centrality' dropdown. Available measures include Degree, Closeness, Betweenness, Eigenvector, and PageRank.";
+      if (operationResult) {
+        // Check if the operation was successful
+        if (operationResult.success) {
+          responseContent = operationResult.content;
+          networkUpdate = operationResult.networkUpdate;
+        } else {
+          responseContent = operationResult.content || operationResult.error || "Failed to process your request.";
+        }
       }
       
       // Add assistant response to the chat with timestamp
@@ -62,7 +421,6 @@ const useChatStore = create((set, get) => ({
         role: 'assistant', 
         content: responseContent,
         networkUpdate: networkUpdate,
-        visualizationUpdate: visualizationUpdate,
         timestamp: new Date().toISOString()
       };
       
