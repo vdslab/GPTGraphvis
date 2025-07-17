@@ -44,6 +44,19 @@ services:
     networks:
       - app-network
 
+  networkx-mcp:
+    build:
+      context: ./networkx-mcp-server
+      dockerfile: Dockerfile
+    ports:
+      - "8765:8765"
+    environment:
+      - MCP_USERNAME=user001
+      - MCP_PASSWORD=password
+    restart: unless-stopped
+    networks:
+      - app-network
+
 networks:
   app-network:
     driver: bridge
