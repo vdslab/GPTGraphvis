@@ -108,6 +108,9 @@ def initialize_sample_network():
 # Initialize the network on startup
 initialize_sample_network()
 
+# Create FastAPI app
+app = FastAPI()
+
 # Layout functions
 def apply_layout(G: nx.Graph, layout_type: str, **kwargs) -> Dict[Any, tuple]:
     """
@@ -304,7 +307,26 @@ async def change_layout(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e)
         }
 
-async def calculate_node_centrality(arguments: Dict[str, Any]) -> Dict[str, Any]:
+# Define MCP tools
+mcp_tools = {
+    "update_network": update_network,
+    "change_layout": change_layout,
+    "calculate_centrality": calculate_centrality,
+    "highlight_nodes": highlight_nodes,
+    "change_visual_properties": change_visual_properties,
+    "get_network_info": get_network_info,
+    "get_node_info": get_node_info,
+    "save_network": save_network,
+    "load_network": load_network,
+    "list_user_networks": list_user_networks,
+    "apply_community_layout": apply_community_layout,
+    "compare_layouts": compare_layouts,
+    "get_sample_network": get_sample_network,
+    "recommend_layout": recommend_layout,
+    "process_chat_message": process_chat_message
+}
+
+async def calculate_centrality(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """
     Calculate centrality metrics for nodes in the graph.
     
@@ -1024,7 +1046,7 @@ async def process_chat_message(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 if re.search(pattern, message_lower, re.IGNORECASE):
                     try:
                         # Calculate centrality
-                        centrality_result = await calculate_node_centrality({
+                        centrality_result = await calculate_centrality({
                             "centrality_type": centrality_type
                         })
                         

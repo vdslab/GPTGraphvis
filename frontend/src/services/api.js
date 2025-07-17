@@ -19,9 +19,6 @@ axios.interceptors.request.use(
       };
       console.log("Adding token to request:", config.url, "Token:", token.substring(0, 10) + "...");
       console.log("Full headers:", JSON.stringify(config.headers));
-      
-      // Debug: Log the full token for debugging purposes
-      console.log("Full token:", token);
     } else {
       console.log("No token found for request:", config.url);
       
@@ -87,16 +84,6 @@ export const authAPI = {
 
 // Network API endpoints have been removed as part of migration to MCP-based design
 export const networkAPI = {};
-
-// ChatGPT API
-export const chatgptAPI = {
-  generateResponse: (prompt, maxTokens = 1000, temperature = 0.7) =>
-    axios.post(`${API_URL}/chatgpt/generate`, {
-      prompt,
-      max_tokens: maxTokens,
-      temperature,
-    }),
-};
 
 // Network Chat API endpoints have been removed as part of migration to MCP-based design
 export const networkChatAPI = {};
