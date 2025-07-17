@@ -57,6 +57,14 @@ function App() {
                 </ProtectedRoute>
               } 
             />
+            <Route 
+              path="/network-chat" 
+              element={
+                <ProtectedRoute>
+                  <NetworkChatPage />
+                </ProtectedRoute>
+              } 
+            />
           </Routes>
         </main>
       </div>

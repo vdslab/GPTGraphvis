@@ -266,6 +266,32 @@ class MCPClient {
       layouts
     });
   }
+
+  /**
+   * Recommend a layout algorithm based on user's question or network properties.
+   * 
+   * @param {string} question - User's question about visualization
+   * @returns {Promise<object>} - Recommended layout algorithm and parameters
+   */
+  async recommendLayout(question) {
+    return this.useTool('recommend_layout', {
+      question
+    });
+  }
+
+  /**
+   * Export the current network as GraphML format.
+   * 
+   * @param {boolean} includePositions - Whether to include node positions in the GraphML
+   * @param {boolean} includeVisualProperties - Whether to include visual properties in the GraphML
+   * @returns {Promise<object>} - GraphML string representation of the network
+   */
+  async exportNetworkAsGraphML(includePositions = true, includeVisualProperties = true) {
+    return this.useTool('export_network_as_graphml', {
+      include_positions: includePositions,
+      include_visual_properties: includeVisualProperties
+    });
+  }
 }
 
 // Create and export a singleton instance

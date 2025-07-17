@@ -10,12 +10,14 @@ from typing import Dict, List, Optional, Any, Union
 import networkx as nx
 import json
 import os
+import io
+import re
 from contextlib import asynccontextmanager
 
 # Import local modules
 import models
-import auth
 from database import get_db
+import auth
 
 # Define MCP models
 class MCPToolRequest(BaseModel):
@@ -898,9 +900,352 @@ async def get_sample_network(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "error": str(e)
         }
 
+async def recommend_layout(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Recommend a layout algorithm based on user's question or network properties.
+    
+    Args:
+        question: User's question about visualization
+        
+    Returns:
+        Recommended layout algorithm and parameters
+    """
+    try:
+        question = arguments.get("question", "")
+        
+        if not question:
+            return {
+                "success": False,
+                "error": "No question provided"
+            }
+        
+        # Convert question to lowercase for easier matching
+        question_lower = question.lower()
+        
+        # Define keywords for different layout types
+        centrality_keywords = ["中心性", "centrality", "重要", "important", "中心", "center", "ハブ", "hub"]
+        community_keywords = ["コミュニティ", "community", "グループ", "group", "クラスタ", "cluster", "モジュール", "module"]
+        hierarchy_keywords = ["階層", "hierarchy", "ツリー", "tree", "親子", "parent-child", "レベル", "level"]
+        overview_keywords = ["全体", "overview", "構造", "structure", "俯瞰", "bird's eye", "概観", "general"]
+        dense_keywords = ["密", "dense", "混雑", "crowded", "複雑", "complex", "多い", "many"]
+        sparse_keywords = ["疎", "sparse", "シンプル", "simple", "少ない", "few"]
+        
+        # Check network properties
+        G = network_state["graph"]
+        num_nodes = G.number_of_nodes()
+        density = nx.density(G)
+        is_connected = nx.is_connected(G)
+        
+        # Default recommendation
+        recommended_layout = "spring"
+        recommended_params = {}
+        recommendation_reason = "Spring layout is a good general-purpose layout algorithm."
+        
+        # Check for centrality-related questions
+        if any(keyword in question_lower for keyword in centrality_keywords):
+            recommended_layout = "fruchterman_reingold"
+            recommended_params = {"k": 0.5, "iterations": 50}
+            recommendation_reason = "Fruchterman-Reingold layout is good for visualizing node centrality as it places more central nodes towards the center."
+            
+            # Also recommend calculating centrality
+            recommended_centrality = "degree"
+            if "closeness" in question_lower or "近接" in question_lower:
+                recommended_centrality = "closeness"
+            elif "betweenness" in question_lower or "媒介" in question_lower:
+                recommended_centrality = "betweenness"
+            elif "eigenvector" in question_lower or "固有ベクトル" in question_lower:
+                recommended_centrality = "eigenvector"
+            elif "pagerank" in question_lower:
+                recommended_centrality = "pagerank"
+        
+        # Check for community-related questions
+        elif any(keyword in question_lower for keyword in community_keywords):
+            recommended_layout = "community"
+            recommended_params = {"algorithm": "louvain", "scale": 1.0}
+            recommendation_reason = "Community layout is ideal for visualizing group structures in the network."
+        
+        # Check for hierarchy-related questions
+        elif any(keyword in question_lower for keyword in hierarchy_keywords):
+            if nx.is_directed(G):
+                recommended_layout = "shell"
+                recommendation_reason = "Shell layout is good for visualizing hierarchical structures in directed networks."
+            else:
+                recommended_layout = "spectral"
+                recommendation_reason = "Spectral layout can reveal hierarchical patterns in the network structure."
+        
+        # Check for overview-related questions
+        elif any(keyword in question_lower for keyword in overview_keywords):
+            recommended_layout = "kamada_kawai"
+            recommendation_reason = "Kamada-Kawai layout provides a good overview of the entire network structure."
+        
+        # Check network properties if no specific keywords matched
+        else:
+            if num_nodes > 100:
+                if density > 0.1:
+                    # Dense large network
+                    recommended_layout = "spectral"
+                    recommendation_reason = "Spectral layout works well for large, dense networks."
+                else:
+                    # Sparse large network
+                    recommended_layout = "spring"
+                    recommended_params = {"k": 0.3, "iterations": 100}
+                    recommendation_reason = "Spring layout with adjusted parameters works well for large, sparse networks."
+            else:
+                if density > 0.2:
+                    # Dense small network
+                    recommended_layout = "kamada_kawai"
+                    recommendation_reason = "Kamada-Kawai layout provides good visualization for small, dense networks."
+                else:
+                    # Sparse small network
+                    recommended_layout = "fruchterman_reingold"
+                    recommendation_reason = "Fruchterman-Reingold layout works well for small, sparse networks."
+        
+        return {
+            "success": True,
+            "recommended_layout": recommended_layout,
+            "recommended_parameters": recommended_params,
+            "recommendation_reason": recommendation_reason,
+            "question": question
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+async def export_network_as_graphml(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Export the current network as GraphML format.
+    
+    Args:
+        include_positions: Whether to include node positions in the GraphML
+        include_visual_properties: Whether to include visual properties in the GraphML
+        
+    Returns:
+        GraphML string representation of the network
+    """
+    try:
+        include_positions = arguments.get("include_positions", True)
+        include_visual_properties = arguments.get("include_visual_properties", True)
+        
+        G = network_state["graph"]
+        
+        if not G:
+            return {
+                "success": False,
+                "error": "No network data available"
+            }
+        
+        # Create a copy of the graph to add attributes
+        export_graph = nx.Graph()
+        
+        # Add nodes with attributes
+        for node in network_state["positions"]:
+            node_attrs = {}
+            
+            # Add label
+            if node.label:
+                node_attrs["label"] = node.label
+            
+            # Add positions if requested
+            if include_positions:
+                node_attrs["x"] = float(node.x)
+                node_attrs["y"] = float(node.y)
+            
+            # Add visual properties if requested
+            if include_visual_properties:
+                node_attrs["size"] = float(node.size) if node.size is not None else 5.0
+                node_attrs["color"] = node.color if node.color else "#1d4ed8"
+            
+            # Add centrality values if available
+            if network_state["centrality_values"] and node.id in network_state["centrality_values"]:
+                node_attrs["centrality"] = float(network_state["centrality_values"][node.id])
+                node_attrs["centrality_type"] = network_state["centrality"]
+            
+            # Add node to export graph
+            export_graph.add_node(node.id, **node_attrs)
+        
+        # Add edges with attributes
+        for edge in network_state["edges"]:
+            edge_attrs = {}
+            
+            # Add visual properties if requested
+            if include_visual_properties:
+                edge_attrs["width"] = float(edge.width) if edge.width is not None else 1.0
+                edge_attrs["color"] = edge.color if edge.color else "#94a3b8"
+            
+            # Add edge to export graph
+            export_graph.add_edge(edge.source, edge.target, **edge_attrs)
+        
+        # Export as GraphML
+        graphml_output = io.StringIO()
+        nx.write_graphml(export_graph, graphml_output)
+        graphml_string = graphml_output.getvalue()
+        
+        return {
+            "success": True,
+            "graphml": graphml_string,
+            "nodes_count": export_graph.number_of_nodes(),
+            "edges_count": export_graph.number_of_edges(),
+            "layout": network_state["layout"],
+            "layout_params": network_state["layout_params"]
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+# Upload network file
+async def upload_network_file(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Upload a network file and parse it into nodes and edges.
+    
+    Args:
+        file_content: Base64 encoded content of the network file
+        file_name: Name of the file being uploaded
+        file_type: MIME type of the file
+        
+    Returns:
+        Parsed network data
+    """
+    try:
+        file_content = arguments.get("file_content", "")
+        file_name = arguments.get("file_name", "")
+        file_type = arguments.get("file_type", "")
+        
+        if not file_content or not file_name:
+            return {
+                "success": False,
+                "error": "File content and name are required"
+            }
+        
+        # Get file extension
+        file_extension = file_name.split('.')[-1].lower()
+        
+        # Check if file extension is supported
+        supported_formats = ['graphml', 'gexf', 'gml', 'json', 'net', 'edgelist', 'adjlist']
+        if file_extension not in supported_formats:
+            return {
+                "success": False,
+                "error": f"Unsupported file format: {file_extension}. Supported formats: {', '.join(supported_formats)}"
+            }
+        
+        # Decode base64 content
+        import base64
+        try:
+            decoded_content = base64.b64decode(file_content)
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Failed to decode file content: {str(e)}"
+            }
+        
+        # Create a temporary file
+        import tempfile
+        import os
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{file_extension}') as temp_file:
+            temp_file.write(decoded_content)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Parse the file based on its extension
+            G = None
+            
+            if file_extension == 'graphml':
+                G = nx.read_graphml(temp_file_path)
+            elif file_extension == 'gexf':
+                G = nx.read_gexf(temp_file_path)
+            elif file_extension == 'gml':
+                G = nx.read_gml(temp_file_path)
+            elif file_extension == 'json':
+                # Try different JSON formats
+                try:
+                    G = nx.node_link_graph(json.load(open(temp_file_path)))
+                except:
+                    try:
+                        G = nx.jit_graph(json.load(open(temp_file_path)))
+                    except:
+                        return {
+                            "success": False,
+                            "error": "Failed to parse JSON file. Supported JSON formats: node-link and JIT"
+                        }
+            elif file_extension == 'net':
+                G = nx.read_pajek(temp_file_path)
+            elif file_extension == 'edgelist':
+                G = nx.read_edgelist(temp_file_path)
+            elif file_extension == 'adjlist':
+                G = nx.read_adjlist(temp_file_path)
+            
+            # Clean up temporary file
+            os.unlink(temp_file_path)
+            
+            if not G:
+                return {
+                    "success": False,
+                    "error": "Failed to parse network file"
+                }
+            
+            # Update network state
+            network_state["graph"] = G
+            
+            # Calculate initial positions
+            pos = nx.spring_layout(G)
+            
+            # Convert to the expected format
+            network_state["positions"] = [
+                Node(
+                    id=str(node),
+                    label=G.nodes[node].get('label', f"Node {node}") if isinstance(G.nodes[node], dict) else f"Node {node}",
+                    x=float(pos[node][0]),
+                    y=float(pos[node][1]),
+                    size=5,
+                    color="#1d4ed8"
+                )
+                for node in G.nodes()
+            ]
+            
+            # Store edges
+            network_state["edges"] = [
+                Edge(
+                    source=str(source),
+                    target=str(target),
+                    width=1,
+                    color="#94a3b8"
+                )
+                for source, target in G.edges()
+            ]
+            
+            return {
+                "success": True,
+                "nodes": [node.dict() for node in network_state["positions"]],
+                "edges": [edge.dict() for edge in network_state["edges"]],
+                "layout": "spring",
+                "layout_params": {},
+                "nodes_count": G.number_of_nodes(),
+                "edges_count": G.number_of_edges(),
+                "file_name": file_name
+            }
+        except Exception as e:
+            # Clean up temporary file
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
+            
+            return {
+                "success": False,
+                "error": f"Failed to parse network file: {str(e)}"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 # Map of tool names to their implementations
 mcp_tools = {
     "update_network": update_network,
+    "upload_network_file": upload_network_file,
     "change_layout": change_layout,
     "calculate_centrality": calculate_node_centrality,
     "highlight_nodes": highlight_nodes,
@@ -912,7 +1257,9 @@ mcp_tools = {
     "list_user_networks": list_user_networks,
     "apply_community_layout": apply_community_layout,
     "compare_layouts": compare_layouts,
-    "get_sample_network": get_sample_network
+    "get_sample_network": get_sample_network,
+    "recommend_layout": recommend_layout,
+    "export_network_as_graphml": export_network_as_graphml
 }
 
 # MCP server FastAPI app
@@ -995,6 +1342,25 @@ async def get_manifest():
         "version": "1.1.0",
         "description": "MCP server for network visualization with enhanced features",
         "tools": [
+            {
+                "name": "upload_network_file",
+                "description": "Upload a network file and parse it into nodes and edges",
+                "parameters": {
+                    "file_content": {
+                        "type": "string",
+                        "description": "Base64 encoded content of the network file"
+                    },
+                    "file_name": {
+                        "type": "string",
+                        "description": "Name of the file being uploaded"
+                    },
+                    "file_type": {
+                        "type": "string",
+                        "description": "MIME type of the file"
+                    }
+                },
+                "required": ["file_content", "file_name"]
+            },
             {
                 "name": "update_network",
                 "description": "Update the network data in the MCP server",
@@ -1231,6 +1597,32 @@ async def get_manifest():
                 "name": "get_sample_network",
                 "description": "Get a sample network (Zachary's Karate Club)",
                 "parameters": {},
+                "required": []
+            },
+            {
+                "name": "recommend_layout",
+                "description": "Recommend a layout algorithm based on user's question or network properties",
+                "parameters": {
+                    "question": {
+                        "type": "string",
+                        "description": "User's question about visualization"
+                    }
+                },
+                "required": ["question"]
+            },
+            {
+                "name": "export_network_as_graphml",
+                "description": "Export the current network as GraphML format",
+                "parameters": {
+                    "include_positions": {
+                        "type": "boolean",
+                        "description": "Whether to include node positions in the GraphML"
+                    },
+                    "include_visual_properties": {
+                        "type": "boolean",
+                        "description": "Whether to include visual properties in the GraphML"
+                    }
+                },
                 "required": []
             }
         ],

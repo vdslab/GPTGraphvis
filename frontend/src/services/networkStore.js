@@ -230,15 +230,27 @@ const useNetworkStore = create((set, get) => ({
     try {
       console.log("Uploading network file using MCP client:", file.name);
       
-      // Create form data for file upload
-      const formData = new FormData();
-      formData.append('file', file);
+      // Read file as base64
+      const fileReader = new FileReader();
+      const fileContentPromise = new Promise((resolve, reject) => {
+        fileReader.onload = (e) => {
+          // Get base64 content without the prefix (e.g., "data:application/xml;base64,")
+          const base64Content = e.target.result.split(',')[1];
+          resolve(base64Content);
+        };
+        fileReader.onerror = () => {
+          reject(new Error("Failed to read file"));
+        };
+        fileReader.readAsDataURL(file);
+      });
+      
+      const fileContent = await fileContentPromise;
       
       // Use MCP client to upload network file
       const result = await mcpClient.useTool('upload_network_file', {
+        file_content: fileContent,
         file_name: file.name,
-        file_type: file.type,
-        file_size: file.size
+        file_type: file.type
       });
       
       if (result && result.success) {
@@ -265,6 +277,87 @@ const useNetworkStore = create((set, get) => ({
         error: error.message || 'Failed to upload network file'
       });
       return false;
+    }
+  },
+  
+  // Recommend layout based on user's question and apply it
+  recommendLayoutAndApply: async (question) => {
+    set({ isLoading: true, error: null });
+    try {
+      console.log("Recommending layout based on question:", question);
+      
+      // Use MCP client to get layout recommendation
+      const result = await mcpClient.recommendLayout(question);
+      
+      if (result && result.success) {
+        console.log("Layout recommendation:", result);
+        
+        // Store recommendation
+        set({ 
+          recommendation: {
+            recommended_layout: result.recommended_layout,
+            recommended_parameters: result.recommended_parameters,
+            recommendation_reason: result.recommendation_reason
+          },
+          isLoading: false
+        });
+        
+        // Apply recommended layout
+        const layoutType = result.recommended_layout;
+        const layoutParams = result.recommended_parameters || {};
+        
+        // Update layout state
+        set({ 
+          layout: layoutType,
+          layoutParams: layoutParams
+        });
+        
+        // Apply the layout
+        return get().calculateLayout();
+      } else {
+        throw new Error(result.error || 'Failed to get layout recommendation');
+      }
+    } catch (error) {
+      console.error("Failed to recommend layout:", error);
+      
+      set({ 
+        isLoading: false, 
+        error: error.message || 'Failed to recommend layout'
+      });
+      return false;
+    }
+  },
+  
+  // Export network as GraphML
+  exportAsGraphML: async (includePositions = true, includeVisualProperties = true) => {
+    set({ isLoading: true, error: null });
+    try {
+      console.log("Exporting network as GraphML");
+      
+      // Use MCP client to export network as GraphML
+      const result = await mcpClient.exportNetworkAsGraphML(
+        includePositions,
+        includeVisualProperties
+      );
+      
+      if (result && result.success) {
+        console.log("Network exported as GraphML successfully");
+        
+        set({ isLoading: false, error: null });
+        
+        // Return the GraphML string
+        return result.graphml;
+      } else {
+        throw new Error(result.error || 'Failed to export network as GraphML');
+      }
+    } catch (error) {
+      console.error("Failed to export network as GraphML:", error);
+      
+      set({ 
+        isLoading: false, 
+        error: error.message || 'Failed to export network as GraphML'
+      });
+      return null;
     }
   }
 }));
