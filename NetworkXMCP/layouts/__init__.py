@@ -1,0 +1,1 @@
+# NetworkX MCP layouts package

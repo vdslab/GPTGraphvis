@@ -27,6 +27,21 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
     depends_on:
       - db
+      - networkx-mcp
+    networks:
+      - app-network
+
+  networkx-mcp:
+    build:
+      context: NetworkXMCP
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./NetworkXMCP:/app
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=info
     networks:
       - app-network
 
