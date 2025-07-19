@@ -9,8 +9,8 @@ WORKDIR /app
 # アプリケーションをコンテナにコピー
 COPY . .
 
-# 依存関係をシステムレベルでインストール
-RUN uv pip install --system fastapi uvicorn networkx openai python-dotenv python-jose passlib sqlalchemy psycopg2-binary alembic numpy scipy httpx python-multipart
+# 依存関係のインストール
+RUN uv sync --frozen --no-cache
 
 # アプリケーションの実行
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
