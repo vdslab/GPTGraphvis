@@ -6,12 +6,12 @@ import os
 from typing import List, Dict, Any, Optional
 import json
 import httpx
-from openai import AsyncOpenAI
+import openai
 
 from services.knowledge import get_network_visualization_knowledge
 
 # Initialize OpenAI client
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # NetworkX MCP server URL
 NETWORKX_MCP_URL = "http://networkx-mcp:8001/mcp"
@@ -67,7 +67,7 @@ If they want to perform specific operations like changing layouts or calculating
         openai_messages = [system_message] + messages
         
         # Call OpenAI API
-        response = await client.chat.completions.create(
+        response = await openai.ChatCompletion.acreate(
             model="gpt-4o",
             messages=openai_messages,
             temperature=0.7,

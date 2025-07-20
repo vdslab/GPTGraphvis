@@ -10,7 +10,7 @@ WORKDIR /app
 COPY . .
 
 # 依存関係のインストール
-RUN uv sync --frozen --no-cache
+RUN uv sync --no-cache
 
 # アプリケーションの実行
 CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
