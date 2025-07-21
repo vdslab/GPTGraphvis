@@ -1,8 +1,8 @@
 -- Create the database if it doesn't exist
-CREATE DATABASE networkdb;
+CREATE DATABASE graphvis;
 
 -- Connect to the database
-\c networkdb
+\c graphvis
 
 -- Create the users table
 CREATE TABLE IF NOT EXISTS users (

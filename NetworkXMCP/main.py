@@ -4,6 +4,7 @@ A FastAPI server for network visualization and analysis using NetworkX.
 """
 
 import os
+import re
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, List, Optional, Any, Union
@@ -14,6 +15,7 @@ import base64
 from io import BytesIO
 from dotenv import load_dotenv
 from pydantic import BaseModel
+from fastapi_mcp import FastApiMCP
 
 # Load environment variables
 load_dotenv()
@@ -34,110 +36,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Define request models
-class ToolRequest(BaseModel):
-    arguments: Dict[str, Any] = {}
-
-# Add manifest endpoint
-@app.get("/mcp/manifest")
-async def get_manifest():
-    """
-    Get the MCP server manifest.
-    """
-    return {
-        "name": "network-visualization-mcp",
-        "version": "1.0.0",
-        "description": "MCP server for network visualization with enhanced features",
-        "tools": [
-            {
-                "name": "upload_network_file",
-                "description": "Upload a network file and parse it into nodes and edges",
-                "parameters": {
-                    "file_content": {
-                        "type": "string",
-                        "description": "Base64 encoded content of the network file"
-                    },
-                    "file_name": {
-                        "type": "string",
-                        "description": "Name of the file being uploaded"
-                    },
-                    "file_type": {
-                        "type": "string",
-                        "description": "MIME type of the file"
-                    }
-                },
-                "required": ["file_content", "file_name"]
-            },
-            {
-                "name": "get_sample_network",
-                "description": "Get a sample network (Zachary's Karate Club)",
-                "parameters": {},
-                "required": []
-            },
-            {
-                "name": "recommend_layout",
-                "description": "Recommend a layout algorithm based on user's question",
-                "parameters": {
-                    "question": {
-                        "type": "string",
-                        "description": "User's question about visualization"
-                    }
-                },
-                "required": ["question"]
-            },
-            {
-                "name": "change_layout",
-                "description": "Change the layout algorithm for the network visualization",
-                "parameters": {
-                    "layout_type": {
-                        "type": "string",
-                        "description": "Type of layout algorithm"
-                    },
-                    "layout_params": {
-                        "type": "object",
-                        "description": "Parameters for the layout algorithm"
-                    }
-                },
-                "required": ["layout_type"]
-            },
-            {
-                "name": "process_chat_message",
-                "description": "Process a chat message and execute network operations",
-                "parameters": {
-                    "message": {
-                        "type": "string",
-                        "description": "The chat message to process"
-                    }
-                },
-                "required": ["message"]
-            }
-        ],
-        "resources": [
-            {
-                "name": "network",
-                "description": "Current network data including nodes and edges",
-                "uri": "/mcp/resources/network"
-            }
-        ]
-    }
-
-# Add resource endpoint
-@app.get("/mcp/resources/network")
-async def get_network_resource():
-    """
-    Get the current network as an MCP resource.
-    """
-    try:
-        return {
-            "nodes": network_state["positions"],
-            "edges": network_state["edges"],
-            "layout": network_state["layout"],
-            "layout_params": network_state["layout_params"],
-            "centrality": network_state["centrality"],
-            "visual_properties": network_state["visual_properties"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+# Create MCP server
+mcp = FastApiMCP(app)
 
 # Global state for network data
 # In a production environment, this would be stored in a database
@@ -193,7 +93,6 @@ def initialize_sample_network():
 initialize_sample_network()
 
 # Create empty directories for modules if they don't exist
-import os
 os.makedirs('layouts', exist_ok=True)
 os.makedirs('metrics', exist_ok=True)
 os.makedirs('tools', exist_ok=True)
@@ -373,11 +272,58 @@ except ImportError:
                 "error": f"Error changing visual properties: {str(e)}"
             }
 
-# Define API routes
+# Define a route for the network resource
+@app.get("/mcp/resources/network", tags=["MCP Resources"])
+async def get_network_resource():
+    """
+    Get the current network as an MCP resource.
+    """
+    try:
+        return {
+            "nodes": network_state["positions"],
+            "edges": network_state["edges"],
+            "layout": network_state["layout"],
+            "layout_params": network_state["layout_params"],
+            "centrality": network_state["centrality"],
+            "visual_properties": network_state["visual_properties"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/mcp/tools/get_sample_network")
-async def get_sample_network(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+# Define Pydantic models for request bodies
+class FileUploadRequest(BaseModel):
+    file_content: str
+    file_name: str
+    file_type: str = ""
+
+class LayoutRequest(BaseModel):
+    layout_type: str
+    layout_params: Dict[str, Any] = {}
+
+class CentralityRequest(BaseModel):
+    centrality_type: str
+
+class NodeInfoRequest(BaseModel):
+    node_ids: List[str]
+
+class HighlightNodesRequest(BaseModel):
+    node_ids: List[str]
+    highlight_color: str = "#ff0000"
+
+class VisualPropertiesRequest(BaseModel):
+    property_type: str
+    property_value: Any
+    property_mapping: Dict[str, Any] = {}
+
+class ChatMessageRequest(BaseModel):
+    message: str
+
+class QuestionRequest(BaseModel):
+    question: str
+
+# Define FastAPI routes for the operations
+@app.get("/get_sample_network", tags=["Network Operations"])
+async def get_sample_network():
     """
     Get a sample network (Zachary's Karate Club).
     
@@ -402,33 +348,20 @@ async def get_sample_network(request: ToolRequest) -> Dict[str, Any]:
             "error": str(e)
         }
 
-@app.post("/mcp/tools/upload_network_file")
-async def upload_network_file(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.post("/upload_network_file", tags=["Network Operations"])
+async def upload_network_file(request: FileUploadRequest):
     """
     Upload a network file and parse it into nodes and edges.
-    
-    Args:
-        file_content: Base64 encoded content of the network file
-        file_name: Name of the file being uploaded
-        file_type: MIME type of the file
-        
-    Returns:
-        Parsed network data
     """
     try:
-        file_content = arguments.get("file_content", "")
-        file_name = arguments.get("file_name", "")
-        file_type = arguments.get("file_type", "")
-        
-        if not file_content or not file_name:
+        if not request.file_content or not request.file_name:
             return {
                 "success": False,
                 "error": "File content and name are required"
             }
         
         # Parse the network file
-        result = parse_network_file(file_content, file_name, file_type)
+        result = parse_network_file(request.file_content, request.file_name, request.file_type)
         
         if result["success"]:
             # Update network state
@@ -437,7 +370,7 @@ async def upload_network_file(request: ToolRequest) -> Dict[str, Any]:
             network_state["edges"] = result["edges"]
             
             # Apply default layout
-            layout_result = await change_layout({"layout_type": "spring"})
+            layout_result = await change_layout(LayoutRequest(layout_type="spring"))
             
             return {
                 "success": True,
@@ -454,26 +387,15 @@ async def upload_network_file(request: ToolRequest) -> Dict[str, Any]:
             "error": str(e)
         }
 
-@app.post("/mcp/tools/change_layout")
-async def change_layout(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.post("/change_layout", tags=["Network Operations"])
+async def change_layout(request: LayoutRequest):
     """
     Change the layout algorithm for the network visualization.
-    
-    Args:
-        layout_type: Type of layout algorithm
-        layout_params: Parameters for the layout algorithm
-        
-    Returns:
-        Updated network positions
     """
     try:
-        layout_type = arguments.get("layout_type", "spring")
-        layout_params = arguments.get("layout_params", {})
-        
         # Update network state
-        network_state["layout"] = layout_type
-        network_state["layout_params"] = layout_params
+        network_state["layout"] = request.layout_type
+        network_state["layout_params"] = request.layout_params
         
         # Apply layout
         G = network_state["graph"]
@@ -483,7 +405,7 @@ async def change_layout(request: ToolRequest) -> Dict[str, Any]:
                 "error": "No network data available"
             }
         
-        pos = apply_layout(G, layout_type, **layout_params)
+        pos = apply_layout(G, request.layout_type, **request.layout_params)
         
         # Update positions
         updated_positions = []
@@ -501,8 +423,8 @@ async def change_layout(request: ToolRequest) -> Dict[str, Any]:
         
         return {
             "success": True,
-            "layout": layout_type,
-            "layout_params": layout_params,
+            "layout": request.layout_type,
+            "layout_params": request.layout_params,
             "positions": [
                 {
                     "id": node["id"],
@@ -518,23 +440,14 @@ async def change_layout(request: ToolRequest) -> Dict[str, Any]:
             "error": str(e)
         }
 
-@app.post("/mcp/tools/calculate_centrality")
-async def calculate_centrality_tool(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.post("/calculate_centrality", tags=["Network Operations"])
+async def calculate_centrality_tool(request: CentralityRequest):
     """
     Calculate centrality metrics for nodes in the graph.
-    
-    Args:
-        centrality_type: Type of centrality to calculate
-        
-    Returns:
-        Centrality values for nodes
     """
     try:
-        centrality_type = arguments.get("centrality_type", "degree")
-        
         # Update network state
-        network_state["centrality"] = centrality_type
+        network_state["centrality"] = request.centrality_type
         
         # Calculate centrality
         G = network_state["graph"]
@@ -544,7 +457,7 @@ async def calculate_centrality_tool(request: ToolRequest) -> Dict[str, Any]:
                 "error": "No network data available"
             }
         
-        centrality_values = calculate_centrality(G, centrality_type)
+        centrality_values = calculate_centrality(G, request.centrality_type)
         
         # Convert node IDs to strings
         centrality_values = {str(node): value for node, value in centrality_values.items()}
@@ -571,7 +484,7 @@ async def calculate_centrality_tool(request: ToolRequest) -> Dict[str, Any]:
         
         return {
             "success": True,
-            "centrality_type": centrality_type,
+            "centrality_type": request.centrality_type,
             "centrality_values": centrality_values
         }
     except Exception as e:
@@ -580,14 +493,10 @@ async def calculate_centrality_tool(request: ToolRequest) -> Dict[str, Any]:
             "error": str(e)
         }
 
-@app.post("/mcp/tools/get_network_info")
-async def get_network_info_tool(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.get("/get_network_info", tags=["Network Operations"])
+async def get_network_info_tool():
     """
     Get information about the current network.
-    
-    Returns:
-        Network information including number of nodes, edges, density, etc.
     """
     try:
         G = network_state["graph"]
@@ -610,21 +519,12 @@ async def get_network_info_tool(request: ToolRequest) -> Dict[str, Any]:
             "error": str(e)
         }
 
-@app.post("/mcp/tools/get_node_info")
-async def get_node_info_tool(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.post("/get_node_info", tags=["Network Operations"])
+async def get_node_info_tool(request: NodeInfoRequest):
     """
     Get information about specific nodes in the network.
-    
-    Args:
-        node_ids: List of node IDs to get information for
-        
-    Returns:
-        Node information including degree, centrality, etc.
     """
     try:
-        node_ids = arguments.get("node_ids", [])
-        
         G = network_state["graph"]
         if not G:
             return {
@@ -632,94 +532,59 @@ async def get_node_info_tool(request: ToolRequest) -> Dict[str, Any]:
                 "error": "No network data available"
             }
         
-        return get_node_info(G, node_ids, network_state["centrality"], network_state["centrality_values"])
+        return get_node_info(G, request.node_ids, network_state["centrality"], network_state["centrality_values"])
     except Exception as e:
         return {
             "success": False,
             "error": str(e)
         }
 
-@app.post("/mcp/tools/highlight_nodes")
-async def highlight_nodes_tool(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.post("/highlight_nodes", tags=["Network Operations"])
+async def highlight_nodes_tool(request: HighlightNodesRequest):
     """
     Highlight specific nodes in the network.
-    
-    Args:
-        node_ids: List of node IDs to highlight
-        highlight_color: Color to use for highlighting
-        
-    Returns:
-        Updated node colors
     """
     try:
-        node_ids = arguments.get("node_ids", [])
-        highlight_color = arguments.get("highlight_color", "#ff0000")
-        
-        return highlight_nodes(network_state, node_ids, highlight_color)
+        return highlight_nodes(network_state, request.node_ids, request.highlight_color)
     except Exception as e:
         return {
             "success": False,
             "error": str(e)
         }
 
-@app.post("/mcp/tools/change_visual_properties")
-async def change_visual_properties_tool(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.post("/change_visual_properties", tags=["Network Operations"])
+async def change_visual_properties_tool(request: VisualPropertiesRequest):
     """
     Change visual properties of nodes or edges.
-    
-    Args:
-        property_type: Type of property to change (node_size, node_color, edge_width, edge_color)
-        property_value: Value to set for the property
-        property_mapping: Optional mapping of node/edge IDs to property values
-        
-    Returns:
-        Updated visual properties
     """
     try:
-        property_type = arguments.get("property_type", "")
-        property_value = arguments.get("property_value", "")
-        property_mapping = arguments.get("property_mapping", {})
-        
-        return change_visual_properties(network_state, property_type, property_value, property_mapping)
+        return change_visual_properties(network_state, request.property_type, request.property_value, request.property_mapping)
     except Exception as e:
         return {
             "success": False,
             "error": str(e)
         }
 
-@app.post("/mcp/tools/recommend_layout")
-async def recommend_layout(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.post("/recommend_layout", tags=["Network Operations"])
+async def recommend_layout(request: QuestionRequest):
     """
     Recommend a layout algorithm based on user's question or network properties.
-    
-    Args:
-        question: User's question about visualization
-        
-    Returns:
-        Recommended layout algorithm and parameters
     """
     try:
-        question = arguments.get("question", "")
-        
-        if not question:
+        if not request.question:
             return {
                 "success": False,
                 "error": "No question provided"
             }
         
         # Convert question to lowercase for easier matching
-        question_lower = question.lower()
+        question_lower = request.question.lower()
         
         # Define keywords for different layout types
         centrality_keywords = ["中心性", "centrality", "重要", "important", "中心", "center", "ハブ", "hub"]
         community_keywords = ["コミュニティ", "community", "グループ", "group", "クラスタ", "cluster", "モジュール", "module"]
         hierarchy_keywords = ["階層", "hierarchy", "ツリー", "tree", "親子", "parent-child", "レベル", "level"]
         overview_keywords = ["全体", "overview", "構造", "structure", "俯瞰", "bird's eye", "概観", "general"]
-        dense_keywords = ["密", "dense", "混雑", "crowded", "複雑", "complex", "多い", "many"]
-        sparse_keywords = ["疎", "sparse", "シンプル", "simple", "少ない", "few"]
         
         # Check network properties
         G = network_state["graph"]
@@ -731,7 +596,6 @@ async def recommend_layout(request: ToolRequest) -> Dict[str, Any]:
         
         num_nodes = G.number_of_nodes()
         density = nx.density(G)
-        is_connected = nx.is_connected(G)
         
         # Default recommendation
         recommended_layout = "spring"
@@ -742,56 +606,30 @@ async def recommend_layout(request: ToolRequest) -> Dict[str, Any]:
         if any(keyword in question_lower for keyword in centrality_keywords):
             recommended_layout = "fruchterman_reingold"
             recommended_params = {"k": 0.5, "iterations": 50}
-            recommendation_reason = "Fruchterman-Reingold layout is good for visualizing node centrality as it places more central nodes towards the center."
+            recommendation_reason = "Fruchterman-Reingold layout is good for visualizing node centrality."
         
         # Check for community-related questions
         elif any(keyword in question_lower for keyword in community_keywords):
-            recommended_layout = "community"
-            recommended_params = {"algorithm": "louvain", "scale": 1.0}
-            recommendation_reason = "Community layout is ideal for visualizing group structures in the network."
+            recommended_layout = "spring"
+            recommended_params = {"k": 0.3}
+            recommendation_reason = "Spring layout with adjusted parameters is good for visualizing communities."
         
         # Check for hierarchy-related questions
         elif any(keyword in question_lower for keyword in hierarchy_keywords):
-            if nx.is_directed(G):
-                recommended_layout = "shell"
-                recommendation_reason = "Shell layout is good for visualizing hierarchical structures in directed networks."
-            else:
-                recommended_layout = "spectral"
-                recommendation_reason = "Spectral layout can reveal hierarchical patterns in the network structure."
+            recommended_layout = "spectral"
+            recommendation_reason = "Spectral layout can reveal hierarchical patterns in the network structure."
         
         # Check for overview-related questions
         elif any(keyword in question_lower for keyword in overview_keywords):
             recommended_layout = "kamada_kawai"
             recommendation_reason = "Kamada-Kawai layout provides a good overview of the entire network structure."
         
-        # Check network properties if no specific keywords matched
-        else:
-            if num_nodes > 100:
-                if density > 0.1:
-                    # Dense large network
-                    recommended_layout = "spectral"
-                    recommendation_reason = "Spectral layout works well for large, dense networks."
-                else:
-                    # Sparse large network
-                    recommended_layout = "spring"
-                    recommended_params = {"k": 0.3, "iterations": 100}
-                    recommendation_reason = "Spring layout with adjusted parameters works well for large, sparse networks."
-            else:
-                if density > 0.2:
-                    # Dense small network
-                    recommended_layout = "kamada_kawai"
-                    recommendation_reason = "Kamada-Kawai layout provides good visualization for small, dense networks."
-                else:
-                    # Sparse small network
-                    recommended_layout = "fruchterman_reingold"
-                    recommendation_reason = "Fruchterman-Reingold layout works well for small, sparse networks."
-        
         return {
             "success": True,
             "recommended_layout": recommended_layout,
             "recommended_parameters": recommended_params,
             "recommendation_reason": recommendation_reason,
-            "question": question
+            "question": request.question
         }
     except Exception as e:
         return {
@@ -799,336 +637,136 @@ async def recommend_layout(request: ToolRequest) -> Dict[str, Any]:
             "error": str(e)
         }
 
-@app.post("/mcp/tools/process_chat_message")
-async def process_chat_message(request: ToolRequest) -> Dict[str, Any]:
-    arguments = request.arguments
+@app.post("/process_chat_message", tags=["Network Operations"])
+async def process_chat_message(request: ChatMessageRequest):
     """
     Process a chat message and execute network operations.
-    
-    Args:
-        message: The chat message to process
-        
-    Returns:
-        Response with executed operation result
     """
     try:
-        message = arguments.get("message", "")
-        
-        if not message:
+        if not request.message:
             return {
                 "success": False,
                 "error": "No message provided"
             }
         
         # Convert message to lowercase for easier matching
-        message_lower = message.lower()
-        
-        # Define patterns for different operations
-        layout_patterns = {
-            "spring": r'\b(spring|スプリング)\b',
-            "circular": r'\b(circular|円形|サークル)\b',
-            "random": r'\b(random|ランダム)\b',
-            "spectral": r'\b(spectral|スペクトル)\b',
-            "shell": r'\b(shell|シェル)\b',
-            "kamada_kawai": r'\b(kamada|kawai|カマダ|カワイ)\b',
-            "fruchterman_reingold": r'\b(fruchterman|reingold|フルクターマン|レインゴールド)\b'
-        }
-        
-        centrality_patterns = {
-            "degree": r'\b(degree|次数|ディグリー)\b',
-            "closeness": r'\b(closeness|近接|クローズネス)\b',
-            "betweenness": r'\b(betweenness|媒介|ビトウィーンネス)\b',
-            "eigenvector": r'\b(eigenvector|固有ベクトル|アイゲンベクトル)\b',
-            "pagerank": r'\b(pagerank|ページランク)\b'
-        }
-        
-        color_patterns = {
-            "red": r'\b(red|赤|レッド)\b',
-            "blue": r'\b(blue|青|ブルー)\b',
-            "green": r'\b(green|緑|グリーン)\b',
-            "yellow": r'\b(yellow|黄|イエロー)\b',
-            "purple": r'\b(purple|紫|パープル)\b',
-            "orange": r'\b(orange|オレンジ)\b',
-            "black": r'\b(black|黒|ブラック)\b',
-            "white": r'\b(white|白|ホワイト)\b'
-        }
-        
-        color_map = {
-            "red": "#ff0000",
-            "blue": "#0000ff",
-            "green": "#00ff00",
-            "yellow": "#ffff00",
-            "purple": "#800080",
-            "orange": "#ffa500",
-            "black": "#000000",
-            "white": "#ffffff"
-        }
+        message_lower = request.message.lower()
         
         # Check for layout change requests
-        if "layout" in message_lower or "レイアウト" in message_lower:
+        if "layout" in message_lower:
             # Check for layout recommendation request
-            if any(keyword in message_lower for keyword in ["recommend", "suggestion", "おすすめ", "提案"]):
-                try:
-                    result = await recommend_layout({"question": message})
-                    if result and result.get("success"):
-                        # Apply the recommended layout
-                        layout_type = result.get("recommended_layout")
-                        layout_params = result.get("recommended_parameters", {})
-                        
-                        # Apply the layout
-                        layout_result = await change_layout({
-                            "layout_type": layout_type,
-                            "layout_params": layout_params
-                        })
-                        
-                        if layout_result and layout_result.get("success"):
-                            return {
-                                "success": True,
-                                "content": f"Based on your request, I recommend using the {layout_type} layout. {result.get('recommendation_reason')} I've applied this layout to the network.",
-                                "networkUpdate": {
-                                    "type": "layout",
-                                    "layout": layout_type,
-                                    "layoutParams": layout_params
-                                }
-                            }
-                        else:
-                            return {
-                                "success": False,
-                                "content": f"I recommend using the {layout_type} layout, but I couldn't apply it. Please try again later."
-                            }
+            if "recommend" in message_lower or "suggestion" in message_lower:
+                result = await recommend_layout(QuestionRequest(question=request.message))
+                if result and result.get("success"):
+                    # Apply the recommended layout
+                    layout_type = result.get("recommended_layout")
+                    layout_params = result.get("recommended_parameters", {})
+                    
+                    # Apply the layout
+                    layout_result = await change_layout(
+                        LayoutRequest(
+                            layout_type=layout_type,
+                            layout_params=layout_params
+                        )
+                    )
+                    
+                    if layout_result and layout_result.get("success"):
+                        return {
+                            "success": True,
+                            "content": f"Based on your request, I recommend using the {layout_type} layout. {result.get('recommendation_reason')} I've applied this layout to the network."
+                        }
                     else:
                         return {
                             "success": False,
-                            "content": "I couldn't recommend a layout based on your request. Please try again with more specific details about what you want to visualize."
+                            "content": f"I recommend using the {layout_type} layout, but I couldn't apply it."
                         }
-                except Exception as e:
+                else:
                     return {
                         "success": False,
-                        "content": f"I'm sorry, I encountered an error trying to recommend a layout: {str(e)}"
+                        "content": "I couldn't recommend a layout based on your request."
                     }
             
             # Check for specific layout requests
-            import re
-            for layout_type, pattern in layout_patterns.items():
-                if re.search(pattern, message_lower, re.IGNORECASE):
-                    try:
-                        result = await change_layout({
-                            "layout_type": layout_type,
-                            "layout_params": {}
-                        })
-                        
-                        if result and result.get("success"):
-                            return {
-                                "success": True,
-                                "content": f"I've changed the layout to {layout_type}. The network visualization has been updated.",
-                                "networkUpdate": {
-                                    "type": "layout",
-                                    "layout": layout_type
-                                }
-                            }
-                        else:
-                            return {
-                                "success": False,
-                                "content": f"I couldn't apply the {layout_type} layout. Please try again later."
-                            }
-                    except Exception as e:
+            layout_types = ["spring", "circular", "random", "spectral", "shell", "kamada_kawai", "fruchterman_reingold"]
+            for layout_type in layout_types:
+                if layout_type in message_lower:
+                    result = await change_layout(
+                        LayoutRequest(
+                            layout_type=layout_type,
+                            layout_params={}
+                        )
+                    )
+                    
+                    if result and result.get("success"):
+                        return {
+                            "success": True,
+                            "content": f"I've changed the layout to {layout_type}. The network visualization has been updated."
+                        }
+                    else:
                         return {
                             "success": False,
-                            "content": f"I'm sorry, I encountered an error trying to apply the {layout_type} layout: {str(e)}"
+                            "content": f"I couldn't apply the {layout_type} layout. Please try again later."
                         }
             
             # If no specific layout was mentioned but "layout" was
             return {
                 "success": True,
-                "content": "You can use the following layouts: Spring, Circular, Random, Spectral, Shell, Kamada-Kawai, and Fruchterman-Reingold. Just ask me to change to any of these layouts."
+                "content": "You can use the following layouts: Spring, Circular, Random, Spectral, Shell, Kamada-Kawai, and Fruchterman-Reingold."
             }
         
         # Check for centrality requests
-        if any(keyword in message_lower for keyword in ["centrality", "中心性", "センタリティ", "measure", "指標"]):
-            import re
-            for centrality_type, pattern in centrality_patterns.items():
-                if re.search(pattern, message_lower, re.IGNORECASE):
-                    try:
-                        # Calculate centrality
-                        centrality_result = await calculate_centrality_tool({
-                            "centrality_type": centrality_type
-                        })
-                        
-                        if centrality_result and centrality_result.get("success"):
-                            return {
-                                "success": True,
-                                "content": f"I've applied {centrality_type} centrality to the network. Nodes are now sized and colored based on their {centrality_type} centrality values.",
-                                "networkUpdate": {
-                                    "type": "centrality",
-                                    "centralityType": centrality_type
-                                }
-                            }
-                        else:
-                            return {
-                                "success": False,
-                                "content": f"I couldn't apply {centrality_type} centrality. Please try again later."
-                            }
-                    except Exception as e:
+        if "centrality" in message_lower or "measure" in message_lower:
+            centrality_types = ["degree", "closeness", "betweenness", "eigenvector", "pagerank"]
+            for centrality_type in centrality_types:
+                if centrality_type in message_lower:
+                    # Calculate centrality
+                    centrality_result = await calculate_centrality_tool(
+                        CentralityRequest(centrality_type=centrality_type)
+                    )
+                    
+                    if centrality_result and centrality_result.get("success"):
+                        return {
+                            "success": True,
+                            "content": f"I've applied {centrality_type} centrality to the network. Nodes are now sized and colored based on their {centrality_type} centrality values."
+                        }
+                    else:
                         return {
                             "success": False,
-                            "content": f"I'm sorry, I encountered an error trying to apply {centrality_type} centrality: {str(e)}"
+                            "content": f"I couldn't apply {centrality_type} centrality. Please try again later."
                         }
             
             # If no specific centrality was mentioned but "centrality" was
             return {
                 "success": True,
-                "content": "You can apply the following centrality measures: Degree, Closeness, Betweenness, Eigenvector, and PageRank. Just ask me to apply any of these centrality measures."
-            }
-        
-        # Check for color change requests
-        if any(keyword in message_lower for keyword in ["color", "色", "カラー"]):
-            # Check if it's for nodes or edges
-            is_for_nodes = "node" in message_lower or "ノード" in message_lower or \
-                          (not "edge" in message_lower and not "エッジ" in message_lower)
-            
-            target = "nodes" if is_for_nodes else "edges"
-            property_type = "node_color" if is_for_nodes else "edge_color"
-            
-            # Check for specific colors
-            import re
-            for color_name, pattern in color_patterns.items():
-                if re.search(pattern, message_lower, re.IGNORECASE):
-                    try:
-                        result = await change_visual_properties_tool({
-                            "property_type": property_type,
-                            "property_value": color_map[color_name]
-                        })
-                        
-                        if result and result.get("success"):
-                            return {
-                                "success": True,
-                                "content": f"I've changed the color of the {target} to {color_name}.",
-                                "networkUpdate": {
-                                    "type": "visualProperty",
-                                    "propertyType": property_type,
-                                    "propertyValue": color_map[color_name]
-                                }
-                            }
-                        else:
-                            return {
-                                "success": False,
-                                "content": f"I couldn't change the color of the {target} to {color_name}. Please try again later."
-                            }
-                    except Exception as e:
-                        return {
-                            "success": False,
-                            "content": f"I'm sorry, I encountered an error trying to change the color of the {target} to {color_name}: {str(e)}"
-                        }
-            
-            # If no specific color was mentioned but "color" was
-            return {
-                "success": True,
-                "content": f"You can change the color of {target} to: Red, Blue, Green, Yellow, Purple, Orange, Black, or White. Just ask me to change the color to any of these colors."
-            }
-        
-        # Check for size change requests
-        if any(keyword in message_lower for keyword in ["size", "サイズ", "大きさ", "太さ"]):
-            # Check if it's for nodes or edges
-            is_for_nodes = "node" in message_lower or "ノード" in message_lower or \
-                          (not "edge" in message_lower and not "エッジ" in message_lower)
-            
-            target = "nodes" if is_for_nodes else "edges"
-            property_type = "node_size" if is_for_nodes else "edge_width"
-            
-            # Check for increase or decrease
-            is_increase = any(keyword in message_lower for keyword in ["increase", "larger", "bigger", "大きく", "太く"])
-            is_decrease = any(keyword in message_lower for keyword in ["decrease", "smaller", "thinner", "小さく", "細く"])
-            
-            # Get current value
-            current_value = network_state["visual_properties"][property_type]
-            
-            # Calculate new value
-            new_value = current_value
-            
-            if is_increase:
-                new_value = min(20 if is_for_nodes else 5, current_value * 1.5)
-            elif is_decrease:
-                new_value = max(2 if is_for_nodes else 0.5, current_value / 1.5)
-            else:
-                # Try to extract a specific size value
-                import re
-                size_match = re.search(r'\b(\d+(\.\d+)?)\b', message_lower)
-                if size_match:
-                    new_value = float(size_match.group(1))
-                    # Ensure reasonable limits
-                    if is_for_nodes:
-                        new_value = max(2, min(20, new_value))
-                    else:
-                        new_value = max(0.5, min(5, new_value))
-            
-            # Only proceed if the value has changed
-            if new_value != current_value:
-                try:
-                    result = await change_visual_properties_tool({
-                        "property_type": property_type,
-                        "property_value": new_value
-                    })
-                    
-                    if result and result.get("success"):
-                        return {
-                            "success": True,
-                            "content": f"I've changed the size of the {target} to {new_value}.",
-                            "networkUpdate": {
-                                "type": "visualProperty",
-                                "propertyType": property_type,
-                                "propertyValue": new_value
-                            }
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "content": f"I couldn't change the size of the {target}. Please try again later."
-                        }
-                except Exception as e:
-                    return {
-                        "success": False,
-                        "content": f"I'm sorry, I encountered an error trying to change the size of the {target}: {str(e)}"
-                    }
-            
-            # If no specific size change was requested but "size" was mentioned
-            return {
-                "success": True,
-                "content": f"You can ask me to increase or decrease the size of {target}, or specify a specific size value."
+                "content": "You can apply the following centrality measures: Degree, Closeness, Betweenness, Eigenvector, and PageRank."
             }
         
         # Check for network information request
-        if any(keyword in message_lower for keyword in ["info", "information", "statistics", "stats", "情報", "統計"]):
-            try:
-                result = await get_network_info_tool({})
-                
-                if result and result.get("success"):
-                    info = result.get("network_info", {})
-                    return {
-                        "success": True,
-                        "content": f"""Network Information:
+        if "info" in message_lower or "information" in message_lower or "statistics" in message_lower:
+            result = await get_network_info_tool()
+            
+            if result and result.get("success"):
+                info = result.get("network_info", {})
+                return {
+                    "success": True,
+                    "content": f"""Network Information:
 - Nodes: {info.get('num_nodes')}
 - Edges: {info.get('num_edges')}
 - Density: {info.get('density', 0):.4f}
 - Connected: {'Yes' if info.get('is_connected') else 'No'}
 - Components: {info.get('num_components')}
 - Average Degree: {info.get('avg_degree', 0):.2f}
-- Clustering Coefficient: {info.get('clustering_coefficient', 0):.4f}
 - Current Layout: {info.get('current_layout')}
 - Current Centrality: {info.get('current_centrality') or 'None'}"""
-                    }
-                else:
-                    return {
-                        "success": False,
-                        "content": "I couldn't retrieve network information. Please try again later."
-                    }
-            except Exception as e:
+                }
+            else:
                 return {
                     "success": False,
-                    "content": f"I'm sorry, I encountered an error trying to retrieve network information: {str(e)}"
+                    "content": "I couldn't retrieve network information. Please try again later."
                 }
         
         # Check for help request
-        if any(keyword in message_lower for keyword in ["help", "ヘルプ", "使い方", "how to"]):
+        if "help" in message_lower:
             return {
                 "success": True,
                 "content": """Here are the operations you can perform via chat:
@@ -1136,11 +774,9 @@ async def process_chat_message(request: ToolRequest) -> Dict[str, Any]:
 1. Change layout: "Use circular layout" or "Apply Fruchterman-Reingold layout"
 2. Get layout recommendation: "Recommend a layout for community detection"
 3. Apply centrality: "Show degree centrality" or "Apply betweenness centrality"
-4. Change colors: "Make nodes red" or "Change edge color to blue"
-5. Change sizes: "Increase node size" or "Make edges thinner"
-6. Get network information: "Show network statistics" or "Display network info"
+4. Get network information: "Show network statistics" or "Display network info"
 
-You can also upload network files using the "Upload Network File" button at the top of the visualization panel."""
+You can also upload network files using the "Upload Network File" button."""
             }
         
         # If no operation was recognized
@@ -1151,5 +787,8 @@ You can also upload network files using the "Upload Network File" button at the 
     except Exception as e:
         return {
             "success": False,
-            "content": f"I'm sorry, I encountered an error processing your message: {str(e)}"
+            "error": str(e)
         }
+
+# Mount the MCP server
+mcp.mount()

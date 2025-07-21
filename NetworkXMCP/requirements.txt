@@ -7,3 +7,4 @@ python-dotenv>=1.0.0
 matplotlib>=3.7.0
 scikit-learn>=1.2.0
 python-louvain>=0.16
+fastapi-mcp==0.3.7
