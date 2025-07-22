@@ -136,15 +136,15 @@ const NetworkChatPage = () => {
         }
         console.log("Token found:", token.substring(0, 10) + "...");
         
-        // Try to load sample network from MCP
+        // Try to load sample network directly from NetworkX server
         try {
-          console.log("Attempting to load sample network from MCP");
-          const result = await mcpClient.getSampleNetwork();
-          console.log("Sample network from MCP:", result);
+          console.log("Attempting to load sample network directly from NetworkX server");
+          const result = await mcpClient.callNetworkXDirect('get_sample_network');
+          console.log("Sample network from direct call:", result);
           
           if (result && result.success && result.nodes && result.nodes.length > 0) {
-            console.log("Using sample network from MCP");
-            // Update network store with data from MCP
+            console.log("Using sample network from direct call");
+            // Update network store with data from direct call
             useNetworkStore.setState({
               positions: result.nodes.map(node => ({
                 id: node.id,
@@ -165,9 +165,43 @@ const NetworkChatPage = () => {
             });
             return;
           }
-        } catch (mcpError) {
-          console.error("Error loading sample network from MCP:", mcpError);
-          console.log("Falling back to traditional network loading");
+        } catch (directError) {
+          console.error("Error loading sample network directly:", directError);
+          console.log("Trying MCP method next");
+          
+          // Try to load sample network from MCP
+          try {
+            console.log("Attempting to load sample network from MCP");
+            const result = await mcpClient.getSampleNetwork();
+            console.log("Sample network from MCP:", result);
+            
+            if (result && result.success && result.nodes && result.nodes.length > 0) {
+              console.log("Using sample network from MCP");
+              // Update network store with data from MCP
+              useNetworkStore.setState({
+                positions: result.nodes.map(node => ({
+                  id: node.id,
+                  label: node.label || node.id,
+                  x: node.x || 0,
+                  y: node.y || 0,
+                  size: node.size || 5,
+                  color: node.color || '#1d4ed8'
+                })),
+                edges: result.edges.map(edge => ({
+                  source: edge.source,
+                  target: edge.target,
+                  width: edge.width || 1,
+                  color: edge.color || '#94a3b8'
+                })),
+                layout: result.layout || 'spring',
+                layoutParams: result.layout_params || {}
+              });
+              return;
+            }
+          } catch (mcpError) {
+            console.error("Error loading sample network from MCP:", mcpError);
+            console.log("Falling back to traditional network loading");
+          }
         }
         
         // Fall back to traditional network loading

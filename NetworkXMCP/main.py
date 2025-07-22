@@ -790,5 +790,363 @@ You can also upload network files using the "Upload Network File" button."""
             "error": str(e)
         }
 
+# Add MCP routes manually
+@app.post("/mcp/tools/get_sample_network")
+async def mcp_get_sample_network(request: Request):
+    """
+    Get a sample network (Zachary's Karate Club).
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await get_sample_network()
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/upload_network_file")
+async def mcp_upload_network_file(request: Request):
+    """
+    Upload a network file and parse it into nodes and edges.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await upload_network_file(body.get("arguments", {}))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/change_layout")
+async def mcp_change_layout(request: Request):
+    """
+    Change the layout algorithm for the network visualization.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await change_layout(body.get("arguments", {}))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/calculate_centrality")
+async def mcp_calculate_centrality(request: Request):
+    """
+    Calculate centrality metrics for nodes in the graph.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await calculate_centrality_tool(body.get("arguments", {}))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/get_network_info")
+async def mcp_get_network_info(request: Request):
+    """
+    Get information about the current network.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await get_network_info_tool()
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/get_node_info")
+async def mcp_get_node_info(request: Request):
+    """
+    Get information about specific nodes in the network.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await get_node_info_tool(body.get("arguments", {}))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/highlight_nodes")
+async def mcp_highlight_nodes(request: Request):
+    """
+    Highlight specific nodes in the network.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await highlight_nodes_tool(body.get("arguments", {}))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/change_visual_properties")
+async def mcp_change_visual_properties(request: Request):
+    """
+    Change visual properties of nodes or edges.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await change_visual_properties_tool(body.get("arguments", {}))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/recommend_layout")
+async def mcp_recommend_layout(request: Request):
+    """
+    Recommend a layout algorithm based on user's question or network properties.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await recommend_layout(body.get("arguments", {}))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/process_chat_message")
+async def mcp_process_chat_message(request: Request):
+    """
+    Process a chat message and execute network operations.
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Call the handler function
+        result = await process_chat_message(body.get("arguments", {}))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/mcp/resources/network")
+async def mcp_get_network_resource():
+    """
+    Get the current network as an MCP resource.
+    """
+    try:
+        # Call the handler function
+        result = await get_network_resource()
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/mcp/manifest")
+async def mcp_manifest():
+    """
+    Get the MCP server manifest.
+    """
+    try:
+        # Return the manifest
+        return {
+            "name": "network-visualization-mcp",
+            "description": "MCP server for network visualization with enhanced features",
+            "tools": [
+                {
+                    "name": "get_sample_network",
+                    "description": "Get a sample network (Zachary's Karate Club)",
+                    "parameters": {}
+                },
+                {
+                    "name": "upload_network_file",
+                    "description": "Upload a network file and parse it into nodes and edges",
+                    "parameters": {
+                        "file_content": {
+                            "type": "string",
+                            "description": "Base64 encoded content of the network file"
+                        },
+                        "file_name": {
+                            "type": "string",
+                            "description": "Name of the file being uploaded"
+                        },
+                        "file_type": {
+                            "type": "string",
+                            "description": "MIME type of the file"
+                        }
+                    }
+                },
+                {
+                    "name": "change_layout",
+                    "description": "Change the layout algorithm for the network visualization",
+                    "parameters": {
+                        "layout_type": {
+                            "type": "string",
+                            "description": "Type of layout algorithm"
+                        },
+                        "layout_params": {
+                            "type": "object",
+                            "description": "Parameters for the layout algorithm"
+                        }
+                    }
+                },
+                {
+                    "name": "calculate_centrality",
+                    "description": "Calculate centrality metrics for nodes in the graph",
+                    "parameters": {
+                        "centrality_type": {
+                            "type": "string",
+                            "description": "Type of centrality to calculate"
+                        }
+                    }
+                },
+                {
+                    "name": "get_network_info",
+                    "description": "Get information about the current network",
+                    "parameters": {}
+                },
+                {
+                    "name": "get_node_info",
+                    "description": "Get information about specific nodes in the network",
+                    "parameters": {
+                        "node_ids": {
+                            "type": "array",
+                            "description": "List of node IDs to get information for"
+                        }
+                    }
+                },
+                {
+                    "name": "highlight_nodes",
+                    "description": "Highlight specific nodes in the network",
+                    "parameters": {
+                        "node_ids": {
+                            "type": "array",
+                            "description": "List of node IDs to highlight"
+                        },
+                        "highlight_color": {
+                            "type": "string",
+                            "description": "Color to use for highlighting"
+                        }
+                    }
+                },
+                {
+                    "name": "change_visual_properties",
+                    "description": "Change visual properties of nodes or edges",
+                    "parameters": {
+                        "property_type": {
+                            "type": "string",
+                            "description": "Type of property to change"
+                        },
+                        "property_value": {
+                            "type": "string",
+                            "description": "Value to set for the property"
+                        },
+                        "property_mapping": {
+                            "type": "object",
+                            "description": "Optional mapping of node/edge IDs to property values"
+                        }
+                    }
+                },
+                {
+                    "name": "recommend_layout",
+                    "description": "Recommend a layout algorithm based on user's question or network properties",
+                    "parameters": {
+                        "question": {
+                            "type": "string",
+                            "description": "User's question about visualization"
+                        }
+                    }
+                },
+                {
+                    "name": "process_chat_message",
+                    "description": "Process a chat message and execute network operations",
+                    "parameters": {
+                        "message": {
+                            "type": "string",
+                            "description": "The chat message to process"
+                        }
+                    }
+                }
+            ],
+            "resources": [
+                {
+                    "name": "network",
+                    "description": "Current network data including nodes and edges",
+                    "uri": "/resources/network"
+                }
+            ]
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 # Mount the MCP server
 mcp.mount()

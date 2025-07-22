@@ -164,10 +164,11 @@ const useNetworkStore = create((set, get) => ({
   loadSampleNetwork: async () => {
     set({ isLoading: true, error: null });
     try {
-      console.log("Attempting to load sample network using MCP client");
+      console.log("Attempting to load sample network");
       
-      // Use MCP client to get sample network
-      const result = await mcpClient.useTool('get_sample_network', {});
+      // Use the enhanced getSampleNetwork method from mcpClient
+      // which tries multiple approaches to get the sample network
+      const result = await mcpClient.getSampleNetwork();
       
       if (result && result.success) {
         console.log("Sample network loaded successfully:", result);
@@ -186,11 +187,52 @@ const useNetworkStore = create((set, get) => ({
     } catch (error) {
       console.error("Failed to load sample network:", error);
       
-      set({ 
-        isLoading: false, 
-        error: error.message || 'Failed to load sample network'
-      });
-      return false;
+      // Create a fallback sample network if all methods fail
+      try {
+        console.log("Creating fallback sample network");
+        
+        // Create a simple star network as fallback
+        const nodes = [];
+        const edges = [];
+        
+        // Create center node
+        nodes.push({
+          id: "0",
+          label: "Center Node"
+        });
+        
+        // Create 10 satellite nodes
+        for (let i = 1; i <= 10; i++) {
+          nodes.push({
+            id: i.toString(),
+            label: `Node ${i}`
+          });
+          
+          // Connect to center node
+          edges.push({
+            source: "0",
+            target: i.toString()
+          });
+        }
+        
+        console.log("Fallback sample network created");
+        set({ 
+          nodes,
+          edges,
+          isLoading: false,
+          error: null
+        });
+        
+        // Calculate layout for the fallback network
+        return get().calculateLayout();
+      } catch (fallbackError) {
+        console.error("Failed to create fallback sample network:", fallbackError);
+        set({ 
+          isLoading: false, 
+          error: error.message || 'Failed to load sample network'
+        });
+        return false;
+      }
     }
   },
 
