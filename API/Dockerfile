@@ -6,8 +6,8 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 # 作業ディレクトリの設定
 WORKDIR /app
 
-# アプリケーションをコンテナにコピー
-COPY . .
+# pyproject.tomlをコンテナにコピー
+COPY ./pyproject.toml .
 
 # 依存関係のインストール
 RUN uv sync --no-cache
