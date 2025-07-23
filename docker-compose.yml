@@ -16,7 +16,7 @@ services:
       context: API
       dockerfile: Dockerfile
     ports:
-      - "8000:80"
+      - "8000:8000"
     volumes:
       - ./API:/app
     restart: unless-stopped

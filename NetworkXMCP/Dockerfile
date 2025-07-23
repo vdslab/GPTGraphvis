@@ -13,4 +13,4 @@ COPY . .
 RUN uv pip install -e . --no-deps && uv pip install -r requirements.txt
 
 # アプリケーションの実行
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"]
