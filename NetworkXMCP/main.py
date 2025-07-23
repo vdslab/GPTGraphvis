@@ -17,6 +17,28 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from fastapi_mcp import FastApiMCP
 
+# Import custom modules
+try:
+    from tools.centrality_chat import process_centrality_chat_message, recommend_centrality_for_network
+except ImportError:
+    # Fallback implementations if module not found
+    def process_centrality_chat_message(message, G=None):
+        return {
+            "success": False,
+            "content": "中心性チャットモジュールが見つかりません。"
+        }
+    
+    def recommend_centrality_for_network(G, user_query=""):
+        return {
+            "recommended_centrality": "degree",
+            "reason": "デフォルトの中心性指標です。",
+            "description": {
+                "name": "次数中心性 (Degree Centrality)",
+                "description": "ノードの接続数に基づく中心性指標です。",
+                "use_cases": "直接的な接続の重要性を測定するのに適しています。"
+            }
+        }
+
 # Load environment variables
 load_dotenv()
 
@@ -649,9 +671,65 @@ async def process_chat_message(request: ChatMessageRequest):
                 "error": "No message provided"
             }
         
+        # 現在のグラフを取得
+        G = network_state["graph"]
+        
         # Convert message to lowercase for easier matching
         message_lower = request.message.lower()
         
+        # まずは中心性に関する質問かどうかを確認
+        importance_keywords = [
+            "重要", "中心性", "重要度", "中心", "重要なノード", "important", "centrality", 
+            "significance", "central", "ノードの大きさ", "中心的", "影響力"
+        ]
+        
+        if any(keyword in message_lower for keyword in importance_keywords):
+            # 中心性チャット処理関数を呼び出す
+            result = process_centrality_chat_message(request.message, G)
+            
+            if result and result.get("success"):
+                # レスポンスの取得
+                content = result.get("content", "")
+                
+                # 推奨された中心性があれば適用
+                recommendation = result.get("recommendation")
+                if recommendation and "recommended_centrality" in recommendation:
+                    centrality_type = recommendation["recommended_centrality"]
+                    
+                    # Apply centrality if mentioned in query
+                    apply_keywords = ["適用", "apply", "使用", "使って", "表示", "可視化", "show"]
+                    if any(keyword in message_lower for keyword in apply_keywords):
+                        try:
+                            # Calculate centrality
+                            centrality_result = await calculate_centrality_tool(
+                                CentralityRequest(centrality_type=centrality_type)
+                            )
+                            
+                            if centrality_result and centrality_result.get("success"):
+                                # 中心性を適用した旨を返答に追加
+                                return {
+                                    "success": True,
+                                    "content": f"{content}\n\n{centrality_type}中心性をネットワークに適用しました。ノードのサイズと色は中心性の値に基づいて変更されています。",
+                                    "networkUpdate": {
+                                        "type": "centrality",
+                                        "centralityType": centrality_type
+                                    }
+                                }
+                        except Exception as e:
+                            print(f"Error applying centrality: {str(e)}")
+                
+                # 中心性を適用しない場合は単純に応答を返す
+                return {
+                    "success": True,
+                    "content": content
+                }
+            else:
+                return {
+                    "success": False,
+                    "content": result.get("content", "中心性に関する質問の処理中にエラーが発生しました。")
+                }
+        
+        # 以下、既存の処理を続行
         # Check for layout change requests
         if "layout" in message_lower:
             # Check for layout recommendation request
@@ -673,7 +751,12 @@ async def process_chat_message(request: ChatMessageRequest):
                     if layout_result and layout_result.get("success"):
                         return {
                             "success": True,
-                            "content": f"Based on your request, I recommend using the {layout_type} layout. {result.get('recommendation_reason')} I've applied this layout to the network."
+                            "content": f"Based on your request, I recommend using the {layout_type} layout. {result.get('recommendation_reason')} I've applied this layout to the network.",
+                            "networkUpdate": {
+                                "type": "layout",
+                                "layout": layout_type,
+                                "layoutParams": layout_params
+                            }
                         }
                     else:
                         return {
@@ -700,7 +783,11 @@ async def process_chat_message(request: ChatMessageRequest):
                     if result and result.get("success"):
                         return {
                             "success": True,
-                            "content": f"I've changed the layout to {layout_type}. The network visualization has been updated."
+                            "content": f"I've changed the layout to {layout_type}. The network visualization has been updated.",
+                            "networkUpdate": {
+                                "type": "layout",
+                                "layout": layout_type
+                            }
                         }
                     else:
                         return {
@@ -727,7 +814,11 @@ async def process_chat_message(request: ChatMessageRequest):
                     if centrality_result and centrality_result.get("success"):
                         return {
                             "success": True,
-                            "content": f"I've applied {centrality_type} centrality to the network. Nodes are now sized and colored based on their {centrality_type} centrality values."
+                            "content": f"I've applied {centrality_type} centrality to the network. Nodes are now sized and colored based on their {centrality_type} centrality values.",
+                            "networkUpdate": {
+                                "type": "centrality",
+                                "centralityType": centrality_type
+                            }
                         }
                     else:
                         return {
@@ -769,20 +860,21 @@ async def process_chat_message(request: ChatMessageRequest):
         if "help" in message_lower:
             return {
                 "success": True,
-                "content": """Here are the operations you can perform via chat:
+                "content": """ネットワークチャットでは以下の操作が可能です：
 
-1. Change layout: "Use circular layout" or "Apply Fruchterman-Reingold layout"
-2. Get layout recommendation: "Recommend a layout for community detection"
-3. Apply centrality: "Show degree centrality" or "Apply betweenness centrality"
-4. Get network information: "Show network statistics" or "Display network info"
+1. レイアウトの変更: 「円形レイアウトを使用」または「Fruchterman-Reingoldレイアウトを適用」
+2. レイアウトの推奨: 「コミュニティ検出に適したレイアウトを推奨」
+3. 中心性の適用: 「次数中心性を表示」または「媒介中心性を適用」
+4. ネットワーク情報の表示: 「ネットワーク統計を表示」
+5. ノードの重要度に関する質問: 「重要なノードを大きく表示したい」「このネットワークではどの中心性が適していますか？」
 
-You can also upload network files using the "Upload Network File" button."""
+「アップロードネットワークファイル」ボタンを使用してネットワークファイルをアップロードすることもできます。"""
             }
         
         # If no operation was recognized
         return {
             "success": False,
-            "content": "I'm sorry, I don't understand that request. Type 'help' to see what operations I can perform."
+            "content": "申し訳ありませんが、その要求を理解できません。「help」と入力すると、実行可能な操作が表示されます。"
         }
     except Exception as e:
         return {
@@ -983,8 +1075,20 @@ async def mcp_process_chat_message(request: Request):
         # Call the handler function
         result = await process_chat_message(body.get("arguments", {}))
         
-        # Return response
-        return result
+        # Return response with network update if available
+        if result and result.get("success") and "networkUpdate" in result:
+            return {
+                "result": {
+                    "success": result.get("success"),
+                    "content": result.get("content"),
+                    "networkUpdate": result.get("networkUpdate")
+                }
+            }
+        else:
+            # Return standard response
+            return {
+                "result": result
+            }
     except Exception as e:
         return {
             "success": False,

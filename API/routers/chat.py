@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import json
+import datetime
+import httpx
 
 import models
 import schemas
@@ -177,13 +179,19 @@ async def process_and_save_response(
         # Process message with LLM
         response = await process_chat_message(formatted_messages)
         
-        # Save assistant response
+        # Save assistant response with metadata (including any network updates)
+        meta_data = response.get("metadata", {})
+        
+        # Add timestamp to metadata
+        if "timestamp" not in meta_data:
+            meta_data["timestamp"] = str(datetime.datetime.now())
+        
         db_message = models.ChatMessage(
             content=response["content"],
             role="assistant",
             user_id=user_id,
             conversation_id=conversation_id,
-            meta_data=json.dumps(response.get("metadata", {}))
+            meta_data=json.dumps(meta_data)
         )
         db.add(db_message)
         db.commit()
@@ -192,13 +200,13 @@ async def process_and_save_response(
         print(f"Error processing message: {str(e)}")
         
         # Save error response
-        error_message = "I'm sorry, I encountered an error processing your message. Please try again later."
+        error_message = "申し訳ありませんが、メッセージの処理中にエラーが発生しました。後でもう一度お試しください。"
         db_message = models.ChatMessage(
             content=error_message,
             role="assistant",
             user_id=user_id,
             conversation_id=conversation_id,
-            meta_data=json.dumps({"error": str(e)})
+            meta_data=json.dumps({"error": str(e), "timestamp": str(datetime.datetime.now())})
         )
         db.add(db_message)
         db.commit()

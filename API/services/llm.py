@@ -36,12 +36,19 @@ async def process_chat_message(messages: List[Dict[str, str]]) -> Dict[str, Any]
             try:
                 network_response = await process_with_networkx_mcp(user_message)
                 if network_response and network_response.get("success"):
-                    return {
-                        "content": network_response.get("content", ""),
-                        "metadata": {
-                            "networkUpdate": network_response.get("networkUpdate", None)
+                    # networkUpdateプロパティがあるか確認
+                    if "networkUpdate" in network_response:
+                        return {
+                            "content": network_response.get("content", ""),
+                            "metadata": {
+                                "networkUpdate": network_response.get("networkUpdate")
+                            }
                         }
-                    }
+                    else:
+                        return {
+                            "content": network_response.get("content", ""),
+                            "metadata": {}
+                        }
             except Exception as e:
                 print(f"Error processing with NetworkX MCP: {str(e)}")
                 # Continue with OpenAI if NetworkX MCP fails
@@ -107,7 +114,9 @@ def is_network_visualization_related(message: str) -> bool:
         "betweenness", "closeness", "eigenvector", "pagerank", "community",
         "cluster", "visualization", "visualize", "ネットワーク", "グラフ", "ノード",
         "エッジ", "レイアウト", "中心性", "次数", "媒介", "近接", "固有ベクトル",
-        "コミュニティ", "クラスタ", "可視化"
+        "コミュニティ", "クラスタ", "可視化", "重要", "重要度", "ハブ", "influence",
+        "橋渡し", "重要なノード", "大きく", "サイズ", "bridge", "important", "center",
+        "significance", "中心", "hub"
     ]
     
     # Check if any keyword is in the message
@@ -140,16 +149,33 @@ async def process_with_networkx_mcp(message: str) -> Dict[str, Any]:
             # Check if the request was successful
             if response.status_code == 200:
                 result = response.json()
-                return result.get("result", {})
+                # ログに出力して応答を確認
+                print(f"NetworkX MCP response: {result}")
+                
+                if "result" in result:
+                    mcp_result = result.get("result", {})
+                    
+                    # Check if there's a network update in the response
+                    if mcp_result.get("success") and "networkUpdate" in mcp_result:
+                        # Include network update in metadata
+                        return {
+                            "success": mcp_result.get("success", False),
+                            "content": mcp_result.get("content", ""),
+                            "networkUpdate": mcp_result.get("networkUpdate")
+                        }
+                    else:
+                        return mcp_result
+                else:
+                    return result
             else:
                 # Return error
                 return {
                     "success": False,
-                    "content": f"Error processing message with NetworkX MCP server: {response.status_code}"
+                    "content": f"NetworkX MCPサーバーからのメッセージ処理中にエラーが発生しました: {response.status_code}"
                 }
     except Exception as e:
         # Return error
         return {
             "success": False,
-            "content": f"Error connecting to NetworkX MCP server: {str(e)}"
+            "content": f"NetworkX MCPサーバーへの接続中にエラーが発生しました: {str(e)}"
         }
