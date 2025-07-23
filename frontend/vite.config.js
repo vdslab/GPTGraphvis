@@ -12,7 +12,7 @@ export default defineConfig({
     },
     hmr: {
       // HMRの設定を追加
-      host: "localhost",
+      host: "0.0.0.0",
       port: 3000,
       protocol: "ws",
       clientPort: 3000, // クライアント側のポート
