@@ -7,13 +7,18 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Get database URL from environment variable
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set")
+# Get database URL from environment variable or use default
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@db:5432/graphvis")
 
-# Create SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+# Create SQLAlchemy engine with specific connection parameters
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,  # 接続前にpingを実行し、接続が生きているか確認
+    pool_recycle=3600,   # 1時間ごとに接続をリサイクル
+    connect_args={
+        "connect_timeout": 10,  # 接続タイムアウトを10秒に設定
+    }
+)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

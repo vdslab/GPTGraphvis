@@ -1,4 +1,5 @@
 import os
+import time
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -6,6 +7,7 @@ from typing import List, Dict, Optional, Any
 import networkx as nx
 import numpy as np
 from dotenv import load_dotenv
+import sqlalchemy.exc
 
 from database import engine, Base
 from routers import auth as auth_router
@@ -17,8 +19,29 @@ import models
 # Load environment variables
 load_dotenv()
 
+# データベースの接続を待機する
+max_retries = 10
+retry_interval = 3  # 秒
+for i in range(max_retries):
+    try:
+        # 接続テスト
+        with engine.connect() as conn:
+            print(f"Database connection successful on attempt {i+1}")
+            break
+    except sqlalchemy.exc.OperationalError as e:
+        if i < max_retries - 1:
+            print(f"Database connection attempt {i+1} failed. Retrying in {retry_interval} seconds...")
+            time.sleep(retry_interval)
+        else:
+            print(f"Failed to connect to database after {max_retries} attempts: {e}")
+            # エラーを発生させずに続行（コンテナ再起動ループを避けるため）
+
 # Create database tables
-Base.metadata.create_all(bind=engine)
+try:
+    Base.metadata.create_all(bind=engine)
+    print("Database tables created successfully")
+except Exception as e:
+    print(f"Error creating database tables: {e}")
 
 app = FastAPI(
     title="Network Visualization API",
@@ -47,3 +70,15 @@ async def root():
         "version": "1.0.0",
         "documentation": "/docs"
     }
+
+@app.get("/health")
+async def health_check():
+    """
+    Health check endpoint for Docker healthcheck.
+    """
+    try:
+        # 接続テスト
+        with engine.connect() as conn:
+            return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": str(e)}

@@ -1148,5 +1148,13 @@ async def mcp_manifest():
             "error": str(e)
         }
 
+# Health check endpoint
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """
+    Health check endpoint for Docker healthcheck.
+    """
+    return {"status": "healthy"}
+
 # Mount the MCP server
 mcp.mount()
