@@ -400,7 +400,7 @@ You can also upload network files using the "Upload Network File" button at the 
       
       // Use MCP server to process chat message
       const operationResult = await mcpClient.processChatMessage(message);
-      console.log("MCP operation result:", operationResult);
+      console.log("MCP operation result:", operationResult ? operationResult : "No result");
       
       // Create response based on operation result
       let responseContent = "I'm sorry, I don't understand that request. You can ask me about network visualization or uploading network files.";
@@ -409,10 +409,12 @@ You can also upload network files using the "Upload Network File" button at the 
       if (operationResult) {
         // Check if the operation was successful
         if (operationResult.success) {
-          responseContent = operationResult.content;
-          networkUpdate = operationResult.networkUpdate;
+          responseContent = operationResult.content || "Operation successful";
+          networkUpdate = operationResult.networkUpdate || null;
         } else {
-          responseContent = operationResult.content || operationResult.error || "Failed to process your request.";
+          // 安全に処理：operationResult.errorがundefinedの場合のエラー回避
+          responseContent = operationResult.content || 
+                           (operationResult.error ? operationResult.error : "Failed to process your request.");
         }
       }
       
@@ -456,11 +458,19 @@ You can also upload network files using the "Upload Network File" button at the 
         });
       } else {
         console.error("Other error type:", error.name);
-        console.error("Error response:", error.response);
+        console.error("Error response:", error.response || "No response available");
+        
+        // エラーオブジェクトを安全に処理
+        let errorMessage = 'Failed to send message';
+        if (error.response && error.response.data && error.response.data.detail) {
+          errorMessage = error.response.data.detail;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
         
         set({ 
           isProcessing: false, 
-          error: error.response?.data?.detail || 'Failed to send message'
+          error: errorMessage
         });
       }
       

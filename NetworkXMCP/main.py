@@ -19,7 +19,8 @@ from fastapi_mcp import FastApiMCP
 
 # Import custom modules
 try:
-    from tools.centrality_chat import process_centrality_chat_message, recommend_centrality_for_network
+    from tools.centrality_chat import process_chat_message as process_centrality_chat_message
+    from tools.centrality_chat import recommend_centrality, get_centrality_info
 except ImportError:
     # Fallback implementations if module not found
     def process_centrality_chat_message(message, G=None):
@@ -28,15 +29,17 @@ except ImportError:
             "content": "中心性チャットモジュールが見つかりません。"
         }
     
-    def recommend_centrality_for_network(G, user_query=""):
+    def recommend_centrality(network_info, question=""):
         return {
             "recommended_centrality": "degree",
-            "reason": "デフォルトの中心性指標です。",
-            "description": {
-                "name": "次数中心性 (Degree Centrality)",
-                "description": "ノードの接続数に基づく中心性指標です。",
-                "use_cases": "直接的な接続の重要性を測定するのに適しています。"
-            }
+            "reason": "デフォルトの中心性指標です。"
+        }
+    
+    def get_centrality_info(centrality_type):
+        return {
+            "name": "次数中心性 (Degree Centrality)",
+            "description": "ノードの接続数に基づく中心性指標です。",
+            "use_cases": "直接的な接続の重要性を測定するのに適しています。"
         }
 
 # Load environment variables
@@ -685,16 +688,21 @@ async def process_chat_message(request: ChatMessageRequest):
         
         if any(keyword in message_lower for keyword in importance_keywords):
             # 中心性チャット処理関数を呼び出す
-            result = process_centrality_chat_message(request.message, G)
+            # ネットワーク情報を取得
+            network_info_result = await get_network_info_tool()
+            network_info = network_info_result.get("network_info", {}) if network_info_result and network_info_result.get("success") else {}
+            
+            # 中心性チャット処理を実行
+            result = process_centrality_chat_message(request.message, network_info)
             
             if result and result.get("success"):
                 # レスポンスの取得
                 content = result.get("content", "")
                 
                 # 推奨された中心性があれば適用
-                recommendation = result.get("recommendation")
-                if recommendation and "recommended_centrality" in recommendation:
-                    centrality_type = recommendation["recommended_centrality"]
+                recommended_centrality = result.get("recommended_centrality")
+                if recommended_centrality:
+                    centrality_type = recommended_centrality
                     
                     # Apply centrality if mentioned in query
                     apply_keywords = ["適用", "apply", "使用", "使って", "表示", "可視化", "show"]

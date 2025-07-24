@@ -1,12 +1,11 @@
 import requests
-import json
 
 # API endpoint for user registration
 url = "http://localhost:8000/auth/register"
 
 # Specified user data
 user_data = {
-    "username": "user001",
+    "username": "user0123",
     "password": "password"
 }
 

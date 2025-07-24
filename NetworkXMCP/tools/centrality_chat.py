@@ -1,311 +1,333 @@
 """
-Centrality chat tools for the NetworkX MCP server.
+ネットワーク中心性に関するチャットツール
+ネットワークの中心性指標に関する説明と対話を行う機能を提供します
 """
 
 import networkx as nx
-from typing import Dict, Any, List, Optional
-import re
+import numpy as np
+from typing import Dict, List, Any, Optional
 
-# 中心性に関する説明
-CENTRALITY_DESCRIPTIONS = {
+# 中心性指標の知識ベース
+CENTRALITY_KNOWLEDGE = {
     "degree": {
-        "name": "次数中心性 (Degree Centrality)",
-        "description": "ノードが持つ接続数（次数）に基づく中心性指標です。多くの他のノードと直接つながっているノードほど重要とみなされます。",
-        "use_cases": "直接的な影響力や情報伝達の速さを測りたい場合に適しています。ソーシャルネットワークでの「人気者」の特定や、通信ネットワークのハブの特定に役立ちます。",
-        "advantages": "計算が単純で直感的に理解しやすい指標です。",
-        "limitations": "ネットワーク全体の構造を考慮せず、直接的な接続のみを考慮します。"
+        "name": "次数中心性",
+        "name_en": "Degree Centrality",
+        "description": "ノードの接続数（次数）に基づく中心性指標です。多くのノードと直接つながっているノードほど重要とみなします。",
+        "use_cases": "ソーシャルネットワークでの人気度や影響力の測定、交通網での主要ハブの特定などに適しています。",
+        "advantages": "計算が非常に簡単で直感的に理解しやすい指標です。ローカルな接続性を反映します。",
+        "limitations": "ネットワーク全体の構造を考慮せず、直接のつながりのみを評価するため、間接的な影響力を測れません。"
     },
     "closeness": {
-        "name": "近接中心性 (Closeness Centrality)",
-        "description": "ノードから他のすべてのノードへの最短経路の長さの逆数に基づく中心性指標です。ネットワーク内の他のすべてのノードに素早くアクセスできるノードほど重要とみなされます。",
-        "use_cases": "情報の効率的な拡散や、ネットワーク全体への到達性が重要な場合に適しています。物流ネットワークでの配送センターの配置や、緊急時の情報伝達者の特定に役立ちます。",
-        "advantages": "ネットワーク全体での位置を考慮し、間接的な接続も評価します。",
-        "limitations": "非連結グラフでは一部のノードが到達不可能なため、計算が複雑になります。大規模ネットワークでは計算コストが高くなります。"
+        "name": "近接中心性",
+        "name_en": "Closeness Centrality",
+        "description": "ノードから他のすべてのノードへの最短経路の長さの逆数に基づく中心性指標です。ネットワーク内の他のノードに素早くアクセスできるノードほど重要とみなします。",
+        "use_cases": "情報拡散の効率性、緊急対応施設の配置、物流センターの立地選定などに適しています。",
+        "advantages": "ネットワーク全体における位置を考慮し、情報伝達の効率性を反映します。",
+        "limitations": "非連結グラフでは計算が複雑になり、大規模ネットワークでの計算コストが高くなります。"
     },
     "betweenness": {
-        "name": "媒介中心性 (Betweenness Centrality)",
-        "description": "ノードを通過する最短経路の数に基づく中心性指標です。他のノード間の情報や資源の流れを制御できるノードほど重要とみなされます。",
-        "use_cases": "情報や資源の流れの制御点、ブリッジ的役割を果たすノードの特定に適しています。交通ネットワークのボトルネック検出や、コミュニティ間のゲートキーパーの特定に役立ちます。",
-        "advantages": "ネットワークの構造的な「橋渡し」役を見つけるのに優れています。",
-        "limitations": "計算コストが高く、大規模ネットワークでは時間がかかります。"
+        "name": "媒介中心性",
+        "name_en": "Betweenness Centrality",
+        "description": "あるノードが他のノード間の最短経路上に位置する頻度に基づく中心性指標です。情報や資源の流れを制御できるノードほど重要とみなします。",
+        "use_cases": "通信ネットワークのボトルネック検出、コミュニティ間の橋渡し役の特定、交通網の要所分析などに適しています。",
+        "advantages": "ネットワークの「橋渡し」役となるノードを特定でき、情報や資源の流れの制御力を評価できます。",
+        "limitations": "計算コストが高く、大規模ネットワークでは近似アルゴリズムが必要になることがあります。"
     },
     "eigenvector": {
-        "name": "固有ベクトル中心性 (Eigenvector Centrality)",
-        "description": "接続先ノードの重要度を考慮した中心性指標です。重要なノードとつながっているノードほど重要とみなされます。",
-        "use_cases": "影響力の伝播や、「重要な人とつながっている人」を特定したい場合に適しています。Webページのランキングや、科学論文の引用ネットワーク分析に役立ちます。",
-        "advantages": "接続の質（重要度）を考慮するため、より洗練された重要度の指標となります。",
-        "limitations": "非連結グラフや有向グラフでは計算が複雑になることがあります。"
+        "name": "固有ベクトル中心性",
+        "name_en": "Eigenvector Centrality",
+        "description": "重要なノードとつながっているノードほど重要とみなす再帰的な中心性指標です。ノードの重要性は、隣接するノードの重要性に比例します。",
+        "use_cases": "影響力のあるユーザーの特定、Webページのランキング（GoogleのPageRankの基礎）、推薦システムなどに適しています。",
+        "advantages": "ノードの直接のつながりだけでなく、ネットワーク内での「質的な」つながりを考慮します。",
+        "limitations": "方向性のあるネットワークでは解釈が複雑になることがあり、計算が収束しない場合があります。"
     },
     "pagerank": {
-        "name": "PageRank",
-        "description": "Googleの検索アルゴリズムの基礎となった中心性指標です。ランダムウォークモデルに基づき、ノードへの訪問確率を計算します。",
-        "use_cases": "Webページのランキングや、複雑なネットワークでの影響力測定に適しています。ソーシャルメディアでの影響力者の特定や、論文の重要度評価に役立ちます。",
-        "advantages": "有向グラフに適しており、固有ベクトル中心性の一般化と考えられます。",
-        "limitations": "パラメータ（ダンピングファクター）の選択に結果が依存します。"
+        "name": "ページランク",
+        "name_en": "PageRank",
+        "description": "固有ベクトル中心性を拡張した指標で、Webページのランキングに使用されるアルゴリズムです。リンクの重みと確率的な遷移を考慮します。",
+        "use_cases": "Web検索エンジン、学術論文の引用分析、ソーシャルメディアの影響力分析などに適しています。",
+        "advantages": "有向グラフに適しており、ランダムウォークモデルに基づく堅牢な指標です。",
+        "limitations": "パラメータ設定（減衰係数など）が結果に影響し、大規模ネットワークでは計算時間がかかります。"
     }
 }
 
-# ネットワーク特性に基づく中心性推奨
-def recommend_centrality_for_network(G: nx.Graph, user_query: str = "") -> Dict[str, Any]:
+def get_centrality_info(centrality_type: str) -> Dict:
     """
-    ネットワーク特性とユーザーのクエリに基づいて最適な中心性指標を推奨します。
+    指定された中心性タイプの情報を取得します
     
     Args:
-        G: NetworkXグラフオブジェクト
-        user_query: ユーザーの質問や要求
+        centrality_type: 中心性のタイプ（degree, closeness, betweenness, eigenvector, pagerank）
         
     Returns:
-        推奨される中心性に関する情報を含む辞書
+        中心性に関する情報を含む辞書
     """
-    # 基本的なネットワーク特性を取得
-    try:
-        num_nodes = G.number_of_nodes()
-        num_edges = G.number_of_edges()
-        density = nx.density(G)
-        is_connected = nx.is_connected(G)
-        avg_degree = sum(dict(G.degree()).values()) / num_nodes if num_nodes > 0 else 0
-        try:
-            clustering_coef = nx.average_clustering(G)
-        except:
-            clustering_coef = 0
+    return CENTRALITY_KNOWLEDGE.get(centrality_type.lower(), {
+        "name": "不明な中心性指標",
+        "description": "指定された中心性タイプの情報は利用できません。"
+    })
+
+def recommend_centrality(network_info: Dict, question: str) -> Dict:
+    """
+    ネットワーク特性と質問に基づいて適切な中心性指標を推奨します
+    
+    Args:
+        network_info: ネットワークの特性情報（ノード数、エッジ数、密度など）
+        question: ユーザーの質問やタスクの内容
         
-        # クエリのキーワードマッチング
-        query_lower = user_query.lower()
+    Returns:
+        推奨される中心性指標とその理由を含む辞書
+    """
+    # ネットワークの特性を解析
+    is_large = network_info.get("num_nodes", 0) > 1000
+    is_dense = network_info.get("density", 0) > 0.1
+    is_connected = network_info.get("is_connected", False)
+    avg_degree = network_info.get("avg_degree", 0)
+    
+    # 質問からキーワードを抽出（簡易実装）
+    keywords = {
+        "direct_influence": ["直接", "つながり", "隣接", "次数", "degree", "人気", "接続数"],
+        "information_flow": ["情報", "伝達", "流れ", "拡散", "近い", "距離", "closeness", "近接"],
+        "control": ["制御", "橋渡し", "間", "ブリッジ", "媒介", "betweenness", "仲介"],
+        "prestige": ["重要", "権威", "影響力", "再帰", "固有", "eigenvector", "権威", "評判"],
+        "ranking": ["ランク", "順位", "pagerank", "検索", "参照", "引用"]
+    }
+    
+    # 質問に含まれるキーワードを分析
+    matched_categories = {}
+    for category, words in keywords.items():
+        score = sum(1 for word in words if word.lower() in question.lower())
+        matched_categories[category] = score
+    
+    # ネットワーク特性と質問内容から最適な中心性を決定
+    if max(matched_categories.values(), default=0) > 0:
+        # 質問内容から明確な好みがある場合
+        best_match = max(matched_categories.items(), key=lambda x: x[1])[0]
         
-        # コミュニティや橋渡しに関するキーワード
-        bridge_keywords = ["bridge", "橋渡し", "橋", "ブリッジ", "コミュニティ間", "仲介", "媒介"]
-        if any(keyword in query_lower for keyword in bridge_keywords):
-            return {
-                "recommended_centrality": "betweenness",
-                "reason": "ネットワーク内の「橋渡し」役割を果たすノードを特定するのに最適な指標です。異なるコミュニティや集団をつなぐノードを見つけることができます。",
-                "description": CENTRALITY_DESCRIPTIONS["betweenness"]
-            }
-        
-        # 直接的な影響力やハブに関するキーワード
-        hub_keywords = ["hub", "ハブ", "接続数", "次数", "直接", "人気", "多くの接続"]
-        if any(keyword in query_lower for keyword in hub_keywords):
+        if best_match == "direct_influence":
             return {
                 "recommended_centrality": "degree",
-                "reason": "直接的な接続数に基づく最もシンプルな中心性指標です。多くの他のノードと接続しているハブを特定するのに適しています。",
-                "description": CENTRALITY_DESCRIPTIONS["degree"]
+                "reason": "質問内容から、ノードの直接的なつながりや人気度に関心があることが伺えます。次数中心性は接続数に基づく最も直感的な指標で、このケースに最適です。"
             }
-        
-        # グローバルな影響力や到達性に関するキーワード
-        global_keywords = ["global", "グローバル", "全体", "到達", "近さ", "効率", "距離"]
-        if any(keyword in query_lower for keyword in global_keywords):
+        elif best_match == "information_flow":
             return {
                 "recommended_centrality": "closeness",
-                "reason": "ネットワーク全体での位置を考慮し、他のすべてのノードへの到達性が高いノードを特定するのに適しています。",
-                "description": CENTRALITY_DESCRIPTIONS["closeness"]
+                "reason": "情報の流れや伝達効率に関心があるようです。近接中心性はノード間の距離の近さを測る指標であり、情報がどれだけ速く広がるかを評価するのに適しています。"
             }
-        
-        # 影響力の伝播や重要なノードとの接続に関するキーワード
-        influence_keywords = ["influence", "影響力", "伝播", "重要な接続", "固有", "質"]
-        if any(keyword in query_lower for keyword in influence_keywords):
-            return {
-                "recommended_centrality": "eigenvector",
-                "reason": "接続先ノードの重要度を考慮した中心性指標です。「重要なノードとつながっているノード」を特定するのに適しています。",
-                "description": CENTRALITY_DESCRIPTIONS["eigenvector"]
-            }
-        
-        # ネットワーク特性に基づく推奨
-        if density < 0.05 and not is_connected:
-            # 疎で非連結なネットワーク
+        elif best_match == "control":
             return {
                 "recommended_centrality": "betweenness",
-                "reason": "ネットワークが疎で非連結な場合、異なるコンポーネントをつなぐ重要なノードを特定するのに媒介中心性が適しています。",
-                "description": CENTRALITY_DESCRIPTIONS["betweenness"]
+                "reason": "ネットワーク内での制御や橋渡し的役割に関心があるようです。媒介中心性はノードがどれだけ他のノード間の最短経路上に位置するかを測り、情報や資源の流れを制御する能力を評価します。"
             }
-        elif density > 0.3:
-            # 密なネットワーク
+        elif best_match == "prestige":
             return {
                 "recommended_centrality": "eigenvector",
-                "reason": "ネットワークが密な場合、単純な接続数だけでなく接続の質も考慮する固有ベクトル中心性が適しています。",
-                "description": CENTRALITY_DESCRIPTIONS["eigenvector"]
+                "reason": "ノードの質的な重要性や影響力に関心があるようです。固有ベクトル中心性は、重要なノードとつながっているノードほど重要とみなす再帰的な指標で、このような分析に適しています。"
             }
-        elif avg_degree > 10:
-            # 平均次数が高いネットワーク
+        elif best_match == "ranking":
             return {
                 "recommended_centrality": "pagerank",
-                "reason": "平均次数が高いネットワークでは、接続数だけでなく接続の質と確率的な訪問頻度を考慮するPageRankが適しています。",
-                "description": CENTRALITY_DESCRIPTIONS["pagerank"]
+                "reason": "ノードのランキングや評価に関心があるようです。PageRankはGoogleの検索エンジンでも使われる堅牢なランキングアルゴリズムで、ネットワーク内での相対的な重要性を評価します。"
             }
-        elif clustering_coef > 0.5:
-            # クラスタリング係数が高いネットワーク
-            return {
-                "recommended_centrality": "betweenness",
-                "reason": "クラスタリング係数が高いネットワークでは、異なるクラスタをつなぐ橋渡し的なノードを特定するのに媒介中心性が適しています。",
-                "description": CENTRALITY_DESCRIPTIONS["betweenness"]
-            }
-        else:
-            # デフォルト
-            return {
-                "recommended_centrality": "degree",
-                "reason": "最もシンプルで直感的に理解しやすい中心性指標です。多くの分析の出発点として適しています。",
-                "description": CENTRALITY_DESCRIPTIONS["degree"]
-            }
-    except Exception as e:
-        # エラーが発生した場合はデフォルトを返す
+    
+    # 質問から明確な傾向が読み取れない場合はネットワーク特性から判断
+    if is_large and not is_dense:
         return {
             "recommended_centrality": "degree",
-            "reason": f"最もシンプルで計算が安定している中心性指標です。（注：推奨処理中にエラーが発生しました: {str(e)}）",
-            "description": CENTRALITY_DESCRIPTIONS["degree"]
+            "reason": "大規模で疎なネットワークでは、計算効率の高い次数中心性が実用的です。基本的な接続パターンを把握するのに役立ちます。"
         }
-
-def get_centrality_explanation(centrality_type: str) -> Dict[str, str]:
-    """
-    指定された中心性指標の説明を取得します。
-    
-    Args:
-        centrality_type: 中心性の種類
-        
-    Returns:
-        中心性の説明を含む辞書
-    """
-    if centrality_type in CENTRALITY_DESCRIPTIONS:
-        return CENTRALITY_DESCRIPTIONS[centrality_type]
+    elif not is_connected:
+        return {
+            "recommended_centrality": "degree",
+            "reason": "非連結グラフでは近接中心性や媒介中心性の計算が複雑になるため、次数中心性を推奨します。"
+        }
+    elif is_dense and avg_degree > 5:
+        return {
+            "recommended_centrality": "eigenvector",
+            "reason": "密で平均次数が高いネットワークでは、単純な接続数よりも質的なつながりが重要です。固有ベクトル中心性はそのような関係性を評価できます。"
+        }
     else:
         return {
-            "name": "未知の中心性",
-            "description": "指定された中心性に関する情報が見つかりません。",
-            "use_cases": "不明",
-            "advantages": "不明",
-            "limitations": "不明"
+            "recommended_centrality": "betweenness",
+            "reason": "一般的なネットワークでは、媒介中心性がネットワークの構造と情報の流れを理解するための優れた指標です。ブリッジとなるノードを特定できます。"
         }
 
-def get_all_centrality_explanations() -> Dict[str, Dict[str, str]]:
+def process_centrality_chat(message: str, network_info: Optional[Dict] = None) -> Dict:
     """
-    すべての中心性指標の説明を取得します。
-    
-    Returns:
-        すべての中心性の説明を含む辞書
-    """
-    return CENTRALITY_DESCRIPTIONS
-
-def process_centrality_chat_message(message: str, G: Optional[nx.Graph] = None) -> Dict[str, Any]:
-    """
-    中心性に関するチャットメッセージを処理します。
+    中心性に関するチャットメッセージを処理し、適切な応答を返します
     
     Args:
-        message: ユーザーのメッセージ
-        G: NetworkXグラフオブジェクト（オプション）
+        message: ユーザーからのチャットメッセージ
+        network_info: 現在のネットワークの特性情報（オプション）
         
     Returns:
-        応答メッセージと関連情報を含む辞書
+        応答内容と推奨される中心性指標を含む辞書
     """
     message_lower = message.lower()
     
-    # 重要度や中心性に関する一般的な質問
-    importance_keywords = [
-        "重要", "中心性", "重要度", "中心", "重要なノード", "important", "centrality", 
-        "significance", "central", "ノードの大きさ"
-    ]
-    
-    if any(keyword in message_lower for keyword in importance_keywords):
-        # 具体的な中心性タイプの言及があるか確認
-        centrality_types = {
-            "degree": ["次数", "degree", "次数中心性", "ディグリー"],
-            "closeness": ["近接", "closeness", "近接中心性", "クローズネス"],
-            "betweenness": ["媒介", "betweenness", "媒介中心性", "ビトウィーンネス"],
-            "eigenvector": ["固有ベクトル", "eigenvector", "固有ベクトル中心性", "アイゲンベクトル"],
-            "pagerank": ["pagerank", "ページランク"]
+    # ネットワーク情報がない場合のデフォルト値
+    if not network_info:
+        network_info = {
+            "num_nodes": 100,
+            "num_edges": 300,
+            "density": 0.06,
+            "is_connected": True,
+            "num_components": 1,
+            "avg_degree": 6.0,
+            "clustering_coefficient": 0.3
         }
-        
-        for centrality_type, keywords in centrality_types.items():
-            if any(keyword in message_lower for keyword in keywords):
-                explanation = get_centrality_explanation(centrality_type)
-                return {
-                    "success": True,
-                    "response_type": "centrality_explanation",
-                    "centrality_type": centrality_type,
-                    "content": f"{explanation['name']}について：\n\n{explanation['description']}\n\n**用途**：{explanation['use_cases']}\n\n**長所**：{explanation['advantages']}\n\n**制限**：{explanation['limitations']}",
-                    "recommendation": None
-                }
-        
-        # 具体的な言及がなければ、ネットワークに基づいて推奨
-        if G:
-            recommendation = recommend_centrality_for_network(G, message)
+    
+    # 特定の中心性タイプについての質問かチェック
+    for centrality_type in CENTRALITY_KNOWLEDGE:
+        if (centrality_type in message_lower or 
+            CENTRALITY_KNOWLEDGE[centrality_type]["name"] in message or
+            CENTRALITY_KNOWLEDGE[centrality_type]["name_en"] in message):
+            
+            info = get_centrality_info(centrality_type)
             return {
                 "success": True,
-                "response_type": "centrality_recommendation",
-                "content": f"ネットワークの重要なノードを可視化するには、**{recommendation['description']['name']}**が適しているでしょう。\n\n{recommendation['reason']}\n\n{recommendation['description']['description']}\n\n**用途**：{recommendation['description']['use_cases']}\n\n他の中心性指標について詳しく知りたい場合や、別の中心性を試したい場合はお知らせください。",
-                "recommendation": recommendation
-            }
-        else:
-            # グラフがない場合は一般的な説明
-            return {
-                "success": True,
-                "response_type": "centrality_general",
-                "content": """ネットワークのノードの重要度を測る中心性指標にはいくつかの種類があります：
-
-1. **次数中心性 (Degree Centrality)** - 直接接続しているノードの数に基づく指標
-2. **近接中心性 (Closeness Centrality)** - ネットワーク内の他のノードへの近さに基づく指標
-3. **媒介中心性 (Betweenness Centrality)** - 他のノード間の最短経路上にあるかに基づく指標
-4. **固有ベクトル中心性 (Eigenvector Centrality)** - 接続先ノードの重要度を考慮した指標
-5. **PageRank** - Googleの検索アルゴリズムの基礎となった確率的な中心性指標
-
-どのような分析をしたいのか、またはネットワークのどのような特性に興味があるかを教えていただければ、最適な中心性指標を推奨できます。""",
-                "recommendation": None
+                "content": f"{info['name']}（{info['name_en']}）: {info['description']}\n\n"
+                           f"用途: {info['use_cases']}\n\n"
+                           f"利点: {info['advantages']}\n\n"
+                           f"制限: {info['limitations']}",
+                "centrality_type": centrality_type
             }
     
-    # 中心性の比較に関する質問
-    comparison_keywords = ["比較", "違い", "どちらが", "どれが", "compare", "difference", "which"]
-    if any(keyword in message_lower for keyword in comparison_keywords):
+    # 重要なノードや中心性に関する一般的な質問の場合
+    centrality_keywords = ["中心性", "centrality", "重要", "重要度", "中心", "影響力", "大きく表示"]
+    if any(keyword in message_lower for keyword in centrality_keywords):
+        recommendation = recommend_centrality(network_info, message)
+        
         return {
             "success": True,
-            "response_type": "centrality_comparison",
-            "content": """各中心性指標の主な違いと特徴は以下の通りです：
-
-**次数中心性**: 最もシンプルで、直接つながっているノードの数だけを考慮します。計算が容易で直感的ですが、ネットワーク全体の構造は考慮しません。
-
-**近接中心性**: ノードから他のすべてのノードへの距離を考慮します。ネットワーク全体での位置を評価しますが、非連結グラフでは問題が生じます。
-
-**媒介中心性**: ノードを通過する最短経路の数を測定します。「橋渡し」的役割を果たすノードを特定するのに優れていますが、計算コストが高いです。
-
-**固有ベクトル中心性**: 接続先ノードの重要度を考慮します。「重要なノードとつながっているノード」を評価しますが、計算が複雑になることがあります。
-
-**PageRank**: ランダムウォークモデルに基づく指標で、有向グラフに適しています。Webページのランキングなどに使用されます。
-
-あなたのネットワークの分析目的に応じて、最適な指標は異なります。どのような分析をしたいですか？""",
-            "recommendation": None
+            "content": f"ネットワークの重要なノードを可視化するには、いくつかの中心性指標があります。あなたのケースでは「{CENTRALITY_KNOWLEDGE[recommendation['recommended_centrality']]['name']}」が適しているでしょう。\n\n"
+                      f"{recommendation['reason']}\n\n"
+                      f"この中心性を適用してノードサイズを変更しますか？または他の中心性指標について詳しく知りたい場合は、「次数中心性について教えて」のように質問してください。",
+            "recommended_centrality": recommendation["recommended_centrality"]
         }
     
-    # ネットワークの特性に関する質問
-    network_keywords = ["ネットワーク", "グラフ", "特性", "構造", "network", "graph", "property", "structure"]
-    if G and any(keyword in message_lower for keyword in network_keywords):
-        try:
-            num_nodes = G.number_of_nodes()
-            num_edges = G.number_of_edges()
-            density = nx.density(G)
-            is_connected = nx.is_connected(G)
-            avg_degree = sum(dict(G.degree()).values()) / num_nodes if num_nodes > 0 else 0
-            
-            return {
-                "success": True,
-                "response_type": "network_info",
-                "content": f"""現在のネットワークの特性：
-
-- ノード数: {num_nodes}
-- エッジ数: {num_edges}
-- 密度: {density:.4f}
-- 連結: {'はい' if is_connected else 'いいえ'}
-- 平均次数: {avg_degree:.2f}
-
-これらの特性に基づくと、{recommend_centrality_for_network(G)['description']['name']}が適しているかもしれません。他に何か知りたい情報はありますか？""",
-                "recommendation": None
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "response_type": "error",
-                "content": f"ネットワーク情報の取得中にエラーが発生しました: {str(e)}",
-                "recommendation": None
-            }
+    # 中心性に関する説明を求められた場合
+    if "中心性について" in message or "中心性とは" in message or "中心性の種類" in message:
+        return {
+            "success": True,
+            "content": "ネットワーク中心性とは、グラフ内でのノードの重要度を測る指標です。主な中心性指標には以下のようなものがあります：\n\n"
+                      "1. 次数中心性（Degree Centrality）: ノードの接続数に基づく指標\n"
+                      "2. 近接中心性（Closeness Centrality）: ノードから他のノードへの距離の近さを測る指標\n"
+                      "3. 媒介中心性（Betweenness Centrality）: ノードが他のノード間の最短経路上にある頻度を測る指標\n"
+                      "4. 固有ベクトル中心性（Eigenvector Centrality）: 重要なノードとつながっているノードほど重要とみなす指標\n"
+                      "5. PageRank: Webページのランキングに使われる固有ベクトル中心性の拡張版\n\n"
+                      "特定の中心性について詳しく知りたい場合は、「次数中心性について教えて」のように質問してください。",
+            "general_info": True
+        }
     
-    # その他の質問や理解できない場合のデフォルト応答
+    # その他の中心性に関連しそうな質問の場合
     return {
         "success": True,
-        "response_type": "default",
-        "content": "ネットワークの中心性に関する質問や、ノードの重要度の可視化方法についてお答えできます。例えば「次数中心性とは何ですか？」や「このネットワークではどの中心性が適していますか？」などと質問してみてください。",
-        "recommendation": None
+        "content": "ネットワークの重要なノードを分析するには中心性指標が役立ちます。次数中心性、近接中心性、媒介中心性、固有ベクトル中心性、PageRankなど、様々な指標があります。\n\n"
+                  "具体的に何を知りたいですか？例えば：\n"
+                  "- 「ノードの重要度で可視化したい」\n"
+                  "- 「次数中心性について教えて」\n"
+                  "- 「このネットワークにはどの中心性が適していますか？」\n"
+                  "などと質問できます。",
+        "general_info": True
     }
+
+def calculate_centrality(G: nx.Graph, centrality_type: str) -> Dict[str, float]:
+    """
+    指定された中心性指標をネットワークに対して計算します
+    
+    Args:
+        G: NetworkXのグラフオブジェクト
+        centrality_type: 計算する中心性のタイプ
+        
+    Returns:
+        ノードIDと中心性値のマッピング辞書
+    """
+    if centrality_type == "degree":
+        centrality = nx.degree_centrality(G)
+    elif centrality_type == "closeness":
+        # 非連結グラフの場合は連結成分ごとに計算
+        if not nx.is_connected(G):
+            centrality = {}
+            for component in nx.connected_components(G):
+                subgraph = G.subgraph(component)
+                comp_centrality = nx.closeness_centrality(subgraph)
+                centrality.update(comp_centrality)
+        else:
+            centrality = nx.closeness_centrality(G)
+    elif centrality_type == "betweenness":
+        centrality = nx.betweenness_centrality(G)
+    elif centrality_type == "eigenvector":
+        try:
+            centrality = nx.eigenvector_centrality(G, max_iter=1000)
+        except nx.PowerIterationFailedConvergence:
+            # 収束しない場合は近似アルゴリズムを使用
+            centrality = nx.eigenvector_centrality_numpy(G)
+    elif centrality_type == "pagerank":
+        centrality = nx.pagerank(G)
+    else:
+        # デフォルトは次数中心性
+        centrality = nx.degree_centrality(G)
+    
+    return centrality
+
+def normalize_centrality_values(centrality: Dict[str, float]) -> Dict[str, float]:
+    """
+    中心性の値を0-1の範囲に正規化します
+    
+    Args:
+        centrality: ノードIDと中心性値のマッピング辞書
+        
+    Returns:
+        正規化された中心性値の辞書
+    """
+    if not centrality:
+        return {}
+    
+    values = list(centrality.values())
+    min_val = min(values)
+    max_val = max(values)
+    
+    # 最大値と最小値が同じ場合（すべての値が同じ）
+    if max_val == min_val:
+        return {node: 0.5 for node in centrality}
+    
+    # 正規化
+    normalized = {node: (val - min_val) / (max_val - min_val) 
+                 for node, val in centrality.items()}
+    
+    return normalized
+
+def centrality_to_node_sizes(centrality: Dict[str, float], 
+                           min_size: float = 3.0, 
+                           max_size: float = 15.0) -> Dict[str, float]:
+    """
+    中心性の値をノードサイズにマッピングします
+    
+    Args:
+        centrality: ノードIDと中心性値のマッピング辞書
+        min_size: 最小ノードサイズ
+        max_size: 最大ノードサイズ
+        
+    Returns:
+        ノードIDとサイズのマッピング辞書
+    """
+    normalized = normalize_centrality_values(centrality)
+    
+    # サイズへのマッピング
+    sizes = {node: min_size + val * (max_size - min_size) 
+            for node, val in normalized.items()}
+    
+    return sizes
+
+def process_chat_message(message: str, network_info: Optional[Dict] = None) -> Dict:
+    """
+    チャットメッセージを処理し、中心性に関する応答を返します
+    
+    Args:
+        message: ユーザーからのチャットメッセージ
+        network_info: ネットワークの特性情報（オプション）
+        
+    Returns:
+        応答内容と推奨操作を含む辞書
+    """
+    return process_centrality_chat(message, network_info)

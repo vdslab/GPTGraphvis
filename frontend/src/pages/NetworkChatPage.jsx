@@ -86,9 +86,20 @@ const NetworkChatPage = () => {
     }
 
     try {
-      // Upload file
+      // Upload file - より堅牢なエラーハンドリング
+      console.log(`Attempting to upload network file: ${file.name}`);
+      
+      // ファイルが空でないことを確認
+      if (file.size === 0) {
+        setFileUploadError("File is empty");
+        return;
+      }
+      
+      // アップロード処理
       const result = await uploadNetworkFile(file);
-      if (result) {
+      
+      // 結果の検証を強化
+      if (result && result.success === true) {
         console.log("Network file uploaded and processed successfully");
 
         // Add a system message to the chat
@@ -97,13 +108,30 @@ const NetworkChatPage = () => {
           content: `Network file "${file.name}" uploaded and processed successfully.`,
           timestamp: new Date().toISOString(),
         });
+      } else if (result && result.error) {
+        // エラーメッセージが結果オブジェクトに含まれている場合
+        console.error("Failed to process network file:", result.error);
+        setFileUploadError(result.error);
       } else {
-        console.error("Failed to process network file");
+        // 一般的なエラーの場合
+        console.error("Failed to process network file: Unknown error");
         setFileUploadError("Failed to process network file");
       }
     } catch (error) {
       console.error("Error uploading network file:", error);
-      setFileUploadError(error.message || "Error uploading network file");
+      // より詳細なエラーメッセージを提供
+      const errorMessage = error.response?.data?.detail || 
+                          error.message || 
+                          "Error uploading network file";
+      setFileUploadError(errorMessage);
+      
+      // チャットにエラーメッセージを追加
+      addMessage({
+        role: "assistant",
+        content: `ファイルのアップロード中にエラーが発生しました: ${errorMessage}`,
+        timestamp: new Date().toISOString(),
+        error: true,
+      });
     }
   };
 

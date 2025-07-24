@@ -50,7 +50,7 @@ function App() {
             <Route path="/register" element={<RegisterPage />} />
             {/* Routes for /network and /recommend have been removed as part of migration to MCP-based design */}
             <Route 
-              path="/network-chat" 
+              path="/chat" 
               element={
                 <ProtectedRoute>
                   <NetworkChatPage />

@@ -45,9 +45,31 @@ class MCPClient {
       );
       
       console.log(`MCP tool ${toolName} response:`, response.data);
+      
+      // レスポンスチェック - resultが存在しない場合のハンドリング
+      if (!response.data || response.data.result === undefined) {
+        console.warn(`Invalid response from MCP tool ${toolName}:`, response.data);
+        return {
+          success: false,
+          content: "サーバーから無効な応答を受け取りました。"
+        };
+      }
+      
       return response.data.result;
     } catch (error) {
       console.error(`Error using MCP tool ${toolName}:`, error);
+      
+      // エラーオブジェクトの安全な処理
+      const errorMessage = error.response?.data?.detail || error.message || `Error using MCP tool ${toolName}`;
+      
+      // ツールエラー時にも適切なレスポンス形式を返す
+      if (toolName === 'process_chat_message') {
+        return {
+          success: false,
+          content: `エラーが発生しました: ${errorMessage}`
+        };
+      }
+      
       throw error;
     }
   }
@@ -394,9 +416,56 @@ class MCPClient {
    * @returns {Promise<object>} - Response with executed operation result
    */
   async processChatMessage(message) {
-    return this.useTool('process_chat_message', {
-      message
-    });
+    try {
+      const result = await this.useTool('process_chat_message', {
+        message
+      });
+      
+      // 結果が正常に返ってきたか確認
+      if (!result) {
+        console.warn('processChatMessage: No result returned from MCP server');
+        return {
+          success: false,
+          content: "申し訳ありませんが、応答の処理中にエラーが発生しました。"
+        };
+      }
+      
+      // エラーチェックを追加
+      if (typeof result === 'string') {
+        return {
+          success: true,
+          content: result,
+          networkUpdate: null
+        };
+      }
+      
+      // content属性がない場合は適切に処理
+      if (result.content === undefined && result.message !== undefined) {
+        result.content = result.message;
+      } else if (result.content === undefined) {
+        result.content = "応答内容が見つかりませんでした。";
+      }
+      
+      // networkUpdateが存在するか確認
+      if (result.networkUpdate === undefined) {
+        result.networkUpdate = null;
+      }
+      
+      // successプロパティがない場合はtrueを設定
+      if (result.success === undefined) {
+        result.success = true;
+      }
+      
+      return result;
+    } catch (error) {
+      console.error('Error in processChatMessage:', error);
+      // エラー発生時も適切なレスポンス形式で返す
+      return {
+        success: false,
+        content: `申し訳ありませんが、メッセージの処理中にエラーが発生しました: ${error.message || 'Unknown error'}`,
+        networkUpdate: null
+      };
+    }
   }
 }
 
