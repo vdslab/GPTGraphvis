@@ -26,6 +26,9 @@ const NetworkChatPage = () => {
   // ネットワーク状態を保持
   const [network_state, setNetworkState] = useState({
     centrality: null,
+    centralityDescription: null,
+    isApplyingCentrality: false,
+    currentCentralityName: "",
   });
 
   // ネットワーク情報を取得
@@ -718,27 +721,97 @@ const NetworkChatPage = () => {
                 </option>
               </select>
 
-              {/* Centrality dropdown */}
-              <select
-                onChange={(e) => {
-                  if (e.target.value) {
-                    applyCentrality(e.target.value);
+              {/* Centrality dropdown - 改良版 */}
+              <div className="relative">
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      // 中心性適用開始のフラグを設定
+                      setNetworkState(prev => ({
+                        ...prev, 
+                        isApplyingCentrality: true,
+                        currentCentralityName: e.target.value === "degree" ? "次数中心性" :
+                                              e.target.value === "closeness" ? "近接中心性" :
+                                              e.target.value === "betweenness" ? "媒介中心性" :
+                                              e.target.value === "eigenvector" ? "固有ベクトル中心性" :
+                                              e.target.value === "pagerank" ? "PageRank" : ""
+                      }));
+                      applyCentrality(e.target.value);
+                      
+                      // 中心性適用完了後のフラグリセット（1秒後）
+                      setTimeout(() => {
+                        setNetworkState(prev => ({
+                          ...prev, 
+                          isApplyingCentrality: false,
+                          centrality: e.target.value
+                        }));
+                      }, 1000);
+                    }
+                  }}
+                  className="px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm pr-10"
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    中心性を適用
+                  </option>
+                  <option value="degree">次数中心性 (Degree)</option>
+                  <option value="closeness">近接中心性 (Closeness)</option>
+                  <option value="betweenness">媒介中心性 (Betweenness)</option>
+                  <option value="eigenvector">
+                    固有ベクトル中心性 (Eigenvector)
+                  </option>
+                  <option value="pagerank">PageRank</option>
+                </select>
+                <div className="absolute inset-y-0 right-0 flex items-center pr-2 pointer-events-none">
+                  <svg
+                    className="w-5 h-5 text-gray-400"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </div>
+              </div>
+              
+              {/* 中心性情報ボタン */}
+              <button
+                onClick={() => {
+                  // 中心性の説明を表示するモーダルを表示するなどの処理
+                  // ここでは簡易的にアシスタントメッセージとして送信
+                  if (network_state.centrality) {
+                    const centralityInfo = {
+                      degree: "次数中心性は、ノードの接続数（次数）に基づく中心性指標です。多くのノードと直接つながっているノードほど重要とみなします。SNSでの「友達が多い」ユーザーや、交通網での「多くの路線が通る駅」などが目立ちます。",
+                      closeness: "近接中心性は、ノードから他のすべてのノードへの最短経路の長さの逆数に基づく指標です。ネットワーク全体の中心に位置するノードが重要とみなされます。情報が素早く広がりやすい位置にあるノードが強調されます。",
+                      betweenness: "媒介中心性は、あるノードが他のノード間の最短経路上に位置する頻度に基づく指標です。異なるグループやコミュニティを結ぶ「橋渡し」の役割を果たすノードが重要とみなされます。",
+                      eigenvector: "固有ベクトル中心性は、重要なノードとつながっているノードほど重要とみなす再帰的な指標です。「重要な人とつながりのある人」が重要という考え方で、権威性や社会的地位を反映した可視化が可能です。",
+                      pagerank: "PageRankは、「多くの重要なノードから参照されているノード」が重要とみなされる指標です。Googleの検索アルゴリズムの基礎となった指標で、リンクの質と量の両方を考慮します。"
+                    };
+                    
+                    addMessage({
+                      role: "assistant",
+                      content: `**${network_state.currentCentralityName}について**\n\n${centralityInfo[network_state.centrality]}`,
+                      timestamp: new Date().toISOString(),
+                    });
+                  } else {
+                    addMessage({
+                      role: "assistant",
+                      content: "現在、中心性は適用されていません。中心性を適用すると、ノードの重要度に応じてサイズが変化します。中心性ドロップダウンから選択してください。",
+                      timestamp: new Date().toISOString(),
+                    });
                   }
                 }}
-                className="px-3 py-2 bg-white border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                defaultValue=""
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md shadow-md flex items-center space-x-1"
+                title="現在の中心性について説明を表示"
               >
-                <option value="" disabled>
-                  中心性を適用
-                </option>
-                <option value="degree">次数中心性 (Degree)</option>
-                <option value="closeness">近接中心性 (Closeness)</option>
-                <option value="betweenness">媒介中心性 (Betweenness)</option>
-                <option value="eigenvector">
-                  固有ベクトル中心性 (Eigenvector)
-                </option>
-                <option value="pagerank">PageRank</option>
-              </select>
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="hidden md:inline">中心性情報</span>
+              </button>
             </div>
           </div>
 
@@ -758,6 +831,19 @@ const NetworkChatPage = () => {
                 <div className="flex flex-col items-center">
                   <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
                   <p className="mt-2 text-blue-500">Loading...</p>
+                </div>
+              </div>
+            )}
+            
+            {/* 中心性適用時のアニメーション表示 */}
+            {network_state.isApplyingCentrality && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-40 z-10">
+                <div className="flex flex-col items-center">
+                  <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                  <p className="mt-2 text-blue-600 font-semibold">
+                    {network_state.currentCentralityName}を適用中...
+                  </p>
+                  <p className="text-sm text-blue-500">ノードの大きさが中心性値に応じて変化します</p>
                 </div>
               </div>
             )}
@@ -785,7 +871,7 @@ const NetworkChatPage = () => {
             <ForceGraph2D
               ref={graphRef}
               graphData={graphData}
-              nodeLabel="label"
+              nodeLabel={(node) => `${node.label || node.id}${network_state.centrality ? `\n中心性値: ${(node.size ? ((node.size - 5) / 10).toFixed(2) : '不明')}` : ''}`}
               nodeRelSize={6}
               nodeVal={(node) => node.size}
               nodeColor={(node) => node.color}
@@ -793,6 +879,44 @@ const NetworkChatPage = () => {
               linkColor={(link) => link.color}
               cooldownTicks={100}
               onEngineStop={() => console.log("Layout stabilized")}
+              // ノードクリック時の処理
+              onNodeClick={(node) => {
+                console.log("Node clicked:", node);
+                if (network_state.centrality) {
+                  addMessage({
+                    role: "assistant",
+                    content: `**ノード「${node.label || node.id}」の情報**\n\n中心性値: ${((node.size - 5) / 10).toFixed(3)}\n\nこのノードは${
+                      node.size > 12 ? "非常に重要" : 
+                      node.size > 9 ? "比較的重要" : 
+                      node.size > 7 ? "平均的な重要度" : 
+                      "あまり重要でない"
+                    }位置にあります。`,
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+              }}
+              // ホバー効果の追加
+              nodeCanvasObject={(node, ctx) => {
+                const size = node.size || 5;
+                // サイズに応じたフォントサイズ（高い中心性値を持つノードのラベルを大きく表示）
+                // const fontSize = (12 + (node.size - 5) * 0.5) / globalScale;
+                // ノードの描画
+                ctx.beginPath();
+                ctx.arc(node.x, node.y, size, 0, 2 * Math.PI);
+                ctx.fillStyle = node.color || '#1d4ed8';
+                ctx.fill();
+                
+                // ノード周囲の発光効果（中心性が高いものほど強く光る）
+                if (network_state.centrality && node.size > 7) {
+                  const glowSize = size * 1.5;
+                  const glowOpacity = (node.size - 5) / 10; // 中心性の正規化値（0〜1）
+                  
+                  ctx.beginPath();
+                  ctx.arc(node.x, node.y, glowSize, 0, 2 * Math.PI);
+                  ctx.fillStyle = `rgba(66, 153, 225, ${glowOpacity * 0.4})`; // 青色の発光効果
+                  ctx.fill();
+                }
+              }}
             />
           </div>
         </div>
