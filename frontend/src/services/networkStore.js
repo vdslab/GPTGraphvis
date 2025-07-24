@@ -106,10 +106,58 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
-  // Apply layout using MCP client
+  // Apply layout using MCP client with GraphML
   applyLayout: async () => {
-    // This function now uses the same implementation as calculateLayout
-    return get().calculateLayout();
+    const { nodes, layout, layoutParams } = get();
+
+    if (!nodes.length) {
+      set({ error: "No nodes provided", isLoading: false });
+      return false;
+    }
+
+    set({ isLoading: true, error: null });
+    try {
+      // Export current network as GraphML
+      const exportResult = await mcpClient.exportNetworkAsGraphML();
+
+      if (!exportResult || !exportResult.success || !exportResult.content) {
+        throw new Error("Failed to export network as GraphML");
+      }
+
+      // Use GraphML-based layout API
+      const graphmlContent = exportResult.content;
+      const result = await mcpClient.graphmlLayout(
+        graphmlContent,
+        layout,
+        layoutParams || {},
+      );
+
+      if (result && result.success && result.graphml_content) {
+        // Parse the returned GraphML content
+        const importResult = await mcpClient.importGraphML(
+          result.graphml_content,
+        );
+
+        if (importResult && importResult.success) {
+          // Update network state with new positions from GraphML
+          set({
+            positions: importResult.nodes || [],
+            isLoading: false,
+            error: null,
+          });
+          return true;
+        } else {
+          throw new Error("Failed to import updated GraphML layout");
+        }
+      } else {
+        throw new Error(result?.error || "Layout calculation failed");
+      }
+    } catch (error) {
+      console.error("Error calculating layout:", error);
+
+      // Fall back to original implementation if GraphML approach fails
+      return get().calculateLayout();
+    }
   },
 
   // Get layout recommendation using MCP client
@@ -239,9 +287,9 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
-  // Apply centrality metrics using NetworkX MCP server
+  // Apply centrality metrics using GraphML-based API
   applyCentrality: async (centralityType) => {
-    const { nodes, edges } = get();
+    const { nodes } = get();
 
     if (!nodes.length) {
       set({ error: "No nodes provided", isLoading: false });
@@ -251,96 +299,108 @@ const useNetworkStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       console.log(
-        `Calculating ${centralityType} centrality using NetworkX MCP server`,
+        `Calculating ${centralityType} centrality using GraphML-based API`,
       );
 
-      // NetworkX MCP サーバーを使用して中心性を計算
-      const result = await mcpClient.useTool("calculate_centrality", {
-        centrality_type: centralityType,
-      });
+      // Export current network as GraphML
+      const exportResult = await mcpClient.exportNetworkAsGraphML();
 
-      if (result && result.success) {
-        console.log(
-          `${centralityType} centrality calculation successful:`,
-          result,
+      if (!exportResult || !exportResult.success || !exportResult.content) {
+        throw new Error("Failed to export network as GraphML");
+      }
+
+      // Use GraphML-based centrality API
+      const graphmlContent = exportResult.content;
+      const result = await mcpClient.graphmlCentrality(
+        graphmlContent,
+        centralityType,
+      );
+
+      if (result && result.success && result.graphml_content) {
+        // Parse the returned GraphML content
+        const importResult = await mcpClient.importGraphML(
+          result.graphml_content,
         );
 
-        // 計算された中心性値を取得
-        const centralityValues = result.centrality_values || {};
+        if (importResult && importResult.success) {
+          // Extract centrality values from node attributes
+          const centralityValues = {};
+          const positions = importResult.nodes || [];
 
-        // 最大値を計算（正規化のため）
-        const maxValue = Math.max(...Object.values(centralityValues), 1);
+          positions.forEach((node) => {
+            if (node.centrality_value) {
+              centralityValues[node.id] = parseFloat(node.centrality_value);
+            }
+          });
 
-        // ノードの位置情報を更新（サイズと色を中心性値に基づいて設定）
-        const updatedPositions = get().positions.map((node) => {
-          const value = centralityValues[node.id] || 0;
-          // サイズは5〜15の範囲でスケーリング
-          const normalizedSize = 5 + (value / maxValue) * 10;
-
-          return {
-            ...node,
-            size: normalizedSize,
-            color: getCentralityColor(value, maxValue),
-          };
-        });
-
-        // 状態を更新
-        set({
-          positions: updatedPositions,
-          centrality: centralityValues,
-          centralityType,
-          isLoading: false,
-          error: null,
-        });
-
-        return true;
+          // Update network state with new positions from GraphML
+          set({
+            positions,
+            centrality: centralityValues,
+            centralityType,
+            isLoading: false,
+            error: null,
+          });
+          return true;
+        } else {
+          throw new Error(
+            "Failed to import updated GraphML with centrality values",
+          );
+        }
       } else {
-        // NetworkXサーバーからのエラーまたは応答がない場合はフォールバック
-        console.warn(
-          "NetworkX centrality calculation failed, using local fallback:",
-          result?.error,
-        );
-
-        // 次数中心性をフロントエンドで計算するフォールバック
-        const degreeMap = {};
-        edges.forEach((edge) => {
-          degreeMap[edge.source] = (degreeMap[edge.source] || 0) + 1;
-          degreeMap[edge.target] = (degreeMap[edge.target] || 0) + 1;
-        });
-
-        // 最大値を計算
-        const maxDegree = Math.max(...Object.values(degreeMap), 1);
-
-        // 位置情報を更新
-        const updatedPositions = get().positions.map((node) => {
-          const degree = degreeMap[node.id] || 0;
-          const normalizedValue = 5 + (degree / maxDegree) * 10; // 5〜15の範囲でスケーリング
-
-          return {
-            ...node,
-            size: normalizedValue,
-            color: getCentralityColor(degree, maxDegree),
-          };
-        });
-
-        set({
-          positions: updatedPositions,
-          centrality: degreeMap,
-          centralityType,
-          isLoading: false,
-          error: null,
-        });
-
-        return true;
+        throw new Error(result?.error || "Centrality calculation failed");
       }
     } catch (error) {
       console.error("Error calculating centrality:", error);
+
+      // Fall back to original implementation for resilience
+      try {
+        // NetworkX MCP サーバーを使用して中心性を計算
+        const result = await mcpClient.useTool("calculate_centrality", {
+          centrality_type: centralityType,
+        });
+
+        if (result && result.success) {
+          // 計算された中心性値を取得
+          const centralityValues = result.centrality_values || {};
+
+          // 最大値を計算（正規化のため）
+          const maxValue = Math.max(...Object.values(centralityValues), 1);
+
+          // ノードの位置情報を更新（サイズと色を中心性値に基づいて設定）
+          const updatedPositions = get().positions.map((node) => {
+            const value = centralityValues[node.id] || 0;
+            // サイズは5〜15の範囲でスケーリング
+            const normalizedSize = 5 + (value / maxValue) * 10;
+
+            return {
+              ...node,
+              size: normalizedSize,
+              color: getCentralityColor(value, maxValue),
+            };
+          });
+
+          // 状態を更新
+          set({
+            positions: updatedPositions,
+            centrality: centralityValues,
+            centralityType,
+            isLoading: false,
+            error: null,
+          });
+
+          return true;
+        }
+      } catch (fallbackError) {
+        console.error(
+          "Fallback centrality calculation also failed:",
+          fallbackError,
+        );
+      }
+
       set({
         isLoading: false,
-        error:
-          error.response?.data?.detail ||
-          error.message ||
-          "Centrality calculation failed",
+        error: error.message || "Centrality calculation failed",
       });
       return false;
     }
@@ -359,50 +419,106 @@ const useNetworkStore = create((set, get) => ({
     });
   },
 
-  // Upload network file using MCP client
+  // Upload network file using GraphML-based API
   uploadNetworkFile: async (file) => {
     set({ isLoading: true, error: null });
     try {
-      console.log("Uploading network file using MCP client:", file.name);
+      console.log("Uploading network file using GraphML API:", file.name);
 
-      // Read file as base64
-      const fileReader = new FileReader();
-      const fileContentPromise = new Promise((resolve, reject) => {
-        fileReader.onload = (e) => {
-          // Get base64 content without the prefix (e.g., "data:application/xml;base64,")
-          const base64Content = e.target.result.split(",")[1];
-          resolve(base64Content);
-        };
-        fileReader.onerror = () => {
-          reject(new Error("Failed to read file"));
-        };
-        fileReader.readAsDataURL(file);
-      });
-
-      const fileContent = await fileContentPromise;
-
-      // Use MCP client to upload network file
-      const result = await mcpClient.useTool("upload_network_file", {
-        file_content: fileContent,
-        file_name: file.name,
-        file_type: file.type,
-      });
-
-      if (result && result.success) {
-        console.log("Network file uploaded successfully:", result);
-
-        // Update network store with data from response
-        set({
-          nodes: result.nodes || [],
-          edges: result.edges || [],
-          isLoading: false,
-          error: null,
+      // For GraphML files, use direct import
+      if (file.name.toLowerCase().endsWith(".graphml")) {
+        // Read file as text
+        const fileReader = new FileReader();
+        const fileContentPromise = new Promise((resolve, reject) => {
+          fileReader.onload = (e) => {
+            resolve(e.target.result);
+          };
+          fileReader.onerror = () => {
+            reject(new Error("Failed to read file"));
+          };
+          fileReader.readAsText(file);
         });
 
-        // Calculate layout for the uploaded network
-        return get().calculateLayout();
+        const graphmlContent = await fileContentPromise;
+
+        // First convert to standard GraphML format
+        const convertResult = await mcpClient.convertGraphML(graphmlContent);
+
+        if (
+          !convertResult ||
+          !convertResult.success ||
+          !convertResult.graphml_content
+        ) {
+          throw new Error("Failed to convert GraphML to standard format");
+        }
+
+        // Import the standardized GraphML
+        const importResult = await mcpClient.importGraphML(
+          convertResult.graphml_content,
+        );
+
+        if (importResult && importResult.success) {
+          console.log("GraphML file imported successfully:", importResult);
+
+          // Update network store with data from response
+          set({
+            nodes: importResult.nodes || [],
+            edges: importResult.edges || [],
+            isLoading: false,
+            error: null,
+          });
+
+          // Apply layout for the uploaded network
+          return get().applyLayout();
+        } else {
+          throw new Error(
+            importResult?.error || "Failed to import GraphML file",
+          );
+        }
       } else {
-        throw new Error(result.error || "Failed to upload network file");
+        // For other file types, use the traditional upload method and convert
+        // Read file as base64
+        const fileReader = new FileReader();
+        const fileContentPromise = new Promise((resolve, reject) => {
+          fileReader.onload = (e) => {
+            // Get base64 content without the prefix (e.g., "data:application/xml;base64,")
+            const base64Content = e.target.result.split(",")[1];
+            resolve(base64Content);
+          };
+          fileReader.onerror = () => {
+            reject(new Error("Failed to read file"));
+          };
+          fileReader.readAsDataURL(file);
+        });
+
+        const fileContent = await fileContentPromise;
+
+        // Use MCP client to upload network file
+        const result = await mcpClient.useTool("upload_network_file", {
+          file_content: fileContent,
+          file_name: file.name,
+          file_type: file.type,
+        });
+
+        if (result && result.success) {
+          console.log("Network file uploaded successfully:", result);
+
+          // Update network store with data from response
+          set({
+            nodes: result.nodes || [],
+            edges: result.edges || [],
+            isLoading: false,
+            error: null,
+          });
+
+          // Export to GraphML to ensure standard format
+          await mcpClient.exportNetworkAsGraphML();
+
+          // Calculate layout for the uploaded network
+          return get().calculateLayout();
+        } else {
+          throw new Error(result?.error || "Failed to upload network file");
+        }
       }
     } catch (error) {
       console.error("Failed to upload network file:", error);
@@ -499,7 +615,7 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
-  // Change visual properties of nodes or edges
+  // Change visual properties of nodes or edges using GraphML-based API
   changeVisualProperties: async (
     propertyType,
     propertyValue,
@@ -508,66 +624,114 @@ const useNetworkStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       console.log(
-        `Changing visual property ${propertyType} to ${propertyValue}`,
+        `Changing visual property ${propertyType} to ${propertyValue} using GraphML API`,
       );
 
-      // Use MCP client to change visual properties
-      const result = await mcpClient.useTool("change_visual_properties", {
-        property_type: propertyType,
-        property_value: propertyValue,
-        property_mapping: propertyMapping,
-      });
+      // Export current network as GraphML
+      const exportResult = await mcpClient.exportNetworkAsGraphML();
 
-      if (result && result.success) {
-        console.log("Visual properties changed successfully:", result);
+      if (!exportResult || !exportResult.success || !exportResult.content) {
+        throw new Error("Failed to export network as GraphML");
+      }
 
-        // Update visual properties in state
-        set((state) => ({
-          visualProperties: {
-            ...state.visualProperties,
-            [propertyType]: propertyValue,
-          },
-          isLoading: false,
-          error: null,
-        }));
+      // Use GraphML-based visual properties API
+      const graphmlContent = exportResult.content;
+      const result = await mcpClient.graphmlVisualProperties(
+        graphmlContent,
+        propertyType,
+        propertyValue,
+        propertyMapping,
+      );
 
-        // If it's a node property, update positions
-        if (propertyType === "node_size" || propertyType === "node_color") {
-          const attribute = propertyType.split("_")[1]; // 'size' or 'color'
-          const updatedPositions = get().positions.map((node) => ({
-            ...node,
-            [attribute]:
-              node.id in propertyMapping
-                ? propertyMapping[node.id]
-                : propertyValue,
+      if (result && result.success && result.graphml_content) {
+        // Parse the returned GraphML content
+        const importResult = await mcpClient.importGraphML(
+          result.graphml_content,
+        );
+
+        if (importResult && importResult.success) {
+          // Update network state with new data from GraphML
+          set((state) => ({
+            positions: importResult.nodes || [],
+            edges: importResult.edges || [],
+            visualProperties: {
+              ...state.visualProperties,
+              [propertyType]: propertyValue,
+            },
+            isLoading: false,
+            error: null,
           }));
-
-          set({ positions: updatedPositions });
+          return true;
+        } else {
+          throw new Error(
+            "Failed to import updated GraphML with visual property changes",
+          );
         }
-
-        // If it's an edge property, update edges
-        if (propertyType === "edge_width" || propertyType === "edge_color") {
-          const attribute = propertyType.split("_")[1]; // 'width' or 'color'
-          const updatedEdges = get().edges.map((edge) => {
-            const edgeKey = `${edge.source}-${edge.target}`;
-            return {
-              ...edge,
-              [attribute]:
-                edgeKey in propertyMapping
-                  ? propertyMapping[edgeKey]
-                  : propertyValue,
-            };
-          });
-
-          set({ edges: updatedEdges });
-        }
-
-        return true;
       } else {
-        throw new Error(result.error || "Failed to change visual properties");
+        throw new Error(result?.error || "Visual property change failed");
       }
     } catch (error) {
       console.error("Failed to change visual properties:", error);
+
+      // Fall back to original implementation for resilience
+      try {
+        // Use legacy MCP client
+        const result = await mcpClient.useTool("change_visual_properties", {
+          property_type: propertyType,
+          property_value: propertyValue,
+          property_mapping: propertyMapping,
+        });
+
+        if (result && result.success) {
+          // Update visual properties in state
+          set((state) => ({
+            visualProperties: {
+              ...state.visualProperties,
+              [propertyType]: propertyValue,
+            },
+            isLoading: false,
+            error: null,
+          }));
+
+          // If it's a node property, update positions
+          if (propertyType === "node_size" || propertyType === "node_color") {
+            const attribute = propertyType.split("_")[1]; // 'size' or 'color'
+            const updatedPositions = get().positions.map((node) => ({
+              ...node,
+              [attribute]:
+                node.id in propertyMapping
+                  ? propertyMapping[node.id]
+                  : propertyValue,
+            }));
+
+            set({ positions: updatedPositions });
+          }
+
+          // If it's an edge property, update edges
+          if (propertyType === "edge_width" || propertyType === "edge_color") {
+            const attribute = propertyType.split("_")[1]; // 'width' or 'color'
+            const updatedEdges = get().edges.map((edge) => {
+              const edgeKey = `${edge.source}-${edge.target}`;
+              return {
+                ...edge,
+                [attribute]:
+                  edgeKey in propertyMapping
+                    ? propertyMapping[edgeKey]
+                    : propertyValue,
+              };
+            });
+
+            set({ edges: updatedEdges });
+          }
+
+          return true;
+        }
+      } catch (fallbackError) {
+        console.error(
+          "Fallback visual property change also failed:",
+          fallbackError,
+        );
+      }
 
       set({
         isLoading: false,

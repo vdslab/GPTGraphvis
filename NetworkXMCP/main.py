@@ -175,7 +175,10 @@ try:
         get_network_info,
         get_node_info,
         highlight_nodes,
-        change_visual_properties
+        change_visual_properties,
+        export_network_as_graphml,
+        convert_to_standard_graphml,
+        parse_graphml_string
     )
 except ImportError:
     # Fallback implementations
@@ -301,7 +304,10 @@ except ImportError:
 @app.get("/mcp/resources/network", tags=["MCP Resources"])
 async def get_network_resource():
     """
-    Get the current network as an MCP resource.
+    現在のネットワークをMCPリソースとして取得します。
+    
+    Returns:
+        Dict: ネットワークリソース（ノード、エッジ、レイアウト、中心性、視覚属性）
     """
     try:
         return {
@@ -316,44 +322,221 @@ async def get_network_resource():
         raise HTTPException(status_code=500, detail=str(e))
 
 # Define Pydantic models for request bodies
+class BaseGraphMLRequest(BaseModel):
+    """
+    GraphMLベースの基本リクエスト
+    
+    Attributes:
+        graphml_content: GraphML形式のデータ文字列
+    """
+    graphml_content: str
+
 class FileUploadRequest(BaseModel):
+    """
+    ファイルアップロードのリクエスト
+    
+    Attributes:
+        file_content: Base64エンコードされたファイルコンテンツ
+        file_name: ファイル名
+        file_type: ファイルのMIMEタイプ (オプション)
+    """
     file_content: str
     file_name: str
     file_type: str = ""
 
+class GraphMLLayoutRequest(BaseGraphMLRequest):
+    """
+    GraphMLデータに対するレイアウト変更リクエスト
+    
+    Attributes:
+        graphml_content: GraphML形式のデータ文字列
+        layout_type: レイアウトアルゴリズムの種類 (spring, circular, spectral, kamada_kawai, fruchterman_reingoldなど)
+        layout_params: レイアウトアルゴリズムのパラメータ (オプション)
+    """
+    layout_type: str
+    layout_params: Dict[str, Any] = {}
+
+class GraphMLCentralityRequest(BaseGraphMLRequest):
+    """
+    GraphMLデータに対する中心性計算リクエスト
+    
+    Attributes:
+        graphml_content: GraphML形式のデータ文字列
+        centrality_type: 中心性指標の種類 (degree, closeness, betweenness, eigenvector, pagerankなど)
+    """
+    centrality_type: str
+
+class GraphMLNodeInfoRequest(BaseGraphMLRequest):
+    """
+    GraphMLデータに対するノード情報取得リクエスト
+    
+    Attributes:
+        graphml_content: GraphML形式のデータ文字列
+        node_ids: 情報を取得するノードIDのリスト
+    """
+    node_ids: List[str]
+
+class GraphMLHighlightNodesRequest(BaseGraphMLRequest):
+    """
+    GraphMLデータに対するノードハイライトリクエスト
+    
+    Attributes:
+        graphml_content: GraphML形式のデータ文字列
+        node_ids: ハイライトするノードIDのリスト
+        highlight_color: ハイライト色 (16進数カラーコード, デフォルト: "#ff0000")
+    """
+    node_ids: List[str]
+    highlight_color: str = "#ff0000"
+
+class GraphMLVisualPropertiesRequest(BaseGraphMLRequest):
+    """
+    GraphMLデータに対する視覚属性変更リクエスト
+    
+    Attributes:
+        graphml_content: GraphML形式のデータ文字列
+        property_type: 変更する属性のタイプ (node_size, node_color, edge_width, edge_colorなど)
+        property_value: 設定する値
+        property_mapping: ノード/エッジIDから値へのマッピング (オプション)
+    """
+    property_type: str
+    property_value: Any
+    property_mapping: Dict[str, Any] = {}
+
+class GraphMLChatMessageRequest(BaseModel):
+    """
+    GraphMLデータを含むチャットメッセージリクエスト
+    
+    Attributes:
+        message: 処理するチャットメッセージ
+        graphml_content: GraphML形式のデータ文字列 (オプション)
+    """
+    message: str
+    graphml_content: Optional[str] = None
+
+class GraphMLQuestionRequest(BaseModel):
+    """
+    GraphMLデータを含む質問リクエスト
+    
+    Attributes:
+        question: 処理する質問
+        graphml_content: GraphML形式のデータ文字列 (オプション)
+    """
+    question: str
+    graphml_content: Optional[str] = None
+
+class GraphMLRequest(BaseGraphMLRequest):
+    """
+    GraphMLデータ入力のリクエスト
+    
+    Attributes:
+        graphml_content: GraphML形式のデータ文字列
+    """
+    pass
+
+class GraphMLConvertRequest(BaseGraphMLRequest):
+    """
+    GraphML変換のリクエスト
+    
+    Attributes:
+        graphml_content: 変換する元のGraphML形式のデータ文字列
+    """
+    pass
+
+class GraphMLResponse(BaseModel):
+    """
+    GraphMLデータを含む標準レスポンス
+    
+    Attributes:
+        success: 操作が成功したかどうか
+        graphml_content: GraphML形式のデータ文字列
+        message: 操作に関するメッセージ (オプション)
+        error: エラーメッセージ (操作が失敗した場合のみ)
+    """
+    success: bool
+    graphml_content: Optional[str] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+# 互換性のために既存のモデルも残す
 class LayoutRequest(BaseModel):
+    """
+    レイアウト変更のリクエスト
+    
+    Attributes:
+        layout_type: レイアウトアルゴリズムの種類 (spring, circular, spectral, kamada_kawai, fruchterman_reingoldなど)
+        layout_params: レイアウトアルゴリズムのパラメータ (オプション)
+    """
     layout_type: str
     layout_params: Dict[str, Any] = {}
 
 class CentralityRequest(BaseModel):
+    """
+    中心性計算のリクエスト
+    
+    Attributes:
+        centrality_type: 中心性指標の種類 (degree, closeness, betweenness, eigenvector, pagerankなど)
+    """
     centrality_type: str
 
 class NodeInfoRequest(BaseModel):
+    """
+    ノード情報取得のリクエスト
+    
+    Attributes:
+        node_ids: 情報を取得するノードIDのリスト
+    """
     node_ids: List[str]
 
 class HighlightNodesRequest(BaseModel):
+    """
+    ノードハイライトのリクエスト
+    
+    Attributes:
+        node_ids: ハイライトするノードIDのリスト
+        highlight_color: ハイライト色 (16進数カラーコード, デフォルト: "#ff0000")
+    """
     node_ids: List[str]
     highlight_color: str = "#ff0000"
 
 class VisualPropertiesRequest(BaseModel):
+    """
+    視覚属性変更のリクエスト
+    
+    Attributes:
+        property_type: 変更する属性のタイプ (node_size, node_color, edge_width, edge_colorなど)
+        property_value: 設定する値
+        property_mapping: ノード/エッジIDから値へのマッピング (オプション)
+    """
     property_type: str
     property_value: Any
     property_mapping: Dict[str, Any] = {}
 
 class ChatMessageRequest(BaseModel):
+    """
+    チャットメッセージのリクエスト
+    
+    Attributes:
+        message: 処理するチャットメッセージ
+    """
     message: str
 
 class QuestionRequest(BaseModel):
+    """
+    質問のリクエスト
+    
+    Attributes:
+        question: 処理する質問
+    """
     question: str
 
 # Define FastAPI routes for the operations
 @app.get("/get_sample_network", tags=["Network Operations"])
 async def get_sample_network():
     """
-    Get a sample network (Zachary's Karate Club).
+    サンプルネットワーク（Zachary's Karate Club）を取得します。
     
     Returns:
-        Sample network data
+        Dict: サンプルネットワークデータ（成功した場合はsuccess=True、ノード、エッジ、レイアウト情報）
     """
     try:
         # Initialize sample network if not already initialized
@@ -376,7 +559,15 @@ async def get_sample_network():
 @app.post("/upload_network_file", tags=["Network Operations"])
 async def upload_network_file(request: FileUploadRequest):
     """
-    Upload a network file and parse it into nodes and edges.
+    ネットワークファイルをアップロードしてノードとエッジに解析します。
+    
+    GraphML、GEXF、GML、EdgeList、AdjList、Pajek、JSONフォーマットのファイルに対応しています。
+    
+    Parameters:
+        request (FileUploadRequest): ファイルのコンテンツと名前を含むリクエストオブジェクト
+    
+    Returns:
+        Dict: 解析結果（成功した場合はsuccess=True、ノード、エッジ、レイアウト情報）
     """
     try:
         if not request.file_content or not request.file_name:
@@ -415,7 +606,15 @@ async def upload_network_file(request: FileUploadRequest):
 @app.post("/change_layout", tags=["Network Operations"])
 async def change_layout(request: LayoutRequest):
     """
-    Change the layout algorithm for the network visualization.
+    ネットワークビジュアライゼーションのレイアウトアルゴリズムを変更します。
+    
+    利用可能なレイアウト：spring, circular, random, spectral, shell, kamada_kawai, fruchterman_reingold
+    
+    Parameters:
+        request (LayoutRequest): レイアウトタイプとパラメータを含むリクエストオブジェクト
+    
+    Returns:
+        Dict: 変更結果（成功した場合はsuccess=True、レイアウト情報、ノード位置）
     """
     try:
         # Update network state
@@ -468,7 +667,15 @@ async def change_layout(request: LayoutRequest):
 @app.post("/calculate_centrality", tags=["Network Operations"])
 async def calculate_centrality_tool(request: CentralityRequest):
     """
-    Calculate centrality metrics for nodes in the graph.
+    グラフ内のノードの中心性指標を計算します。
+    
+    利用可能な中心性指標：degree, closeness, betweenness, eigenvector, pagerank
+    
+    Parameters:
+        request (CentralityRequest): 中心性タイプを含むリクエストオブジェクト
+    
+    Returns:
+        Dict: 計算結果（成功した場合はsuccess=True、中心性値）
     """
     try:
         # Update network state
@@ -521,7 +728,10 @@ async def calculate_centrality_tool(request: CentralityRequest):
 @app.get("/get_network_info", tags=["Network Operations"])
 async def get_network_info_tool():
     """
-    Get information about the current network.
+    現在のネットワークに関する情報を取得します。
+    
+    Returns:
+        Dict: ネットワーク情報（ノード数、エッジ数、密度、連結性、コンポーネント数、平均次数など）
     """
     try:
         G = network_state["graph"]
@@ -553,7 +763,13 @@ async def get_network_info_tool():
 @app.post("/get_node_info", tags=["Network Operations"])
 async def get_node_info_tool(request: NodeInfoRequest):
     """
-    Get information about specific nodes in the network.
+    ネットワーク内の特定のノードに関する情報を取得します。
+    
+    Parameters:
+        request (NodeInfoRequest): 情報を取得するノードIDのリストを含むリクエストオブジェクト
+    
+    Returns:
+        Dict: ノード情報（次数、隣接ノード、属性、中心性値（計算されている場合））
     """
     try:
         G = network_state["graph"]
@@ -573,7 +789,13 @@ async def get_node_info_tool(request: NodeInfoRequest):
 @app.post("/highlight_nodes", tags=["Network Operations"])
 async def highlight_nodes_tool(request: HighlightNodesRequest):
     """
-    Highlight specific nodes in the network.
+    ネットワーク内の特定のノードをハイライトします。
+    
+    Parameters:
+        request (HighlightNodesRequest): ハイライトするノードIDとハイライト色を含むリクエストオブジェクト
+    
+    Returns:
+        Dict: ハイライト結果（成功した場合はsuccess=True、ハイライトされたノード）
     """
     try:
         return highlight_nodes(network_state, request.node_ids, request.highlight_color)
@@ -586,7 +808,13 @@ async def highlight_nodes_tool(request: HighlightNodesRequest):
 @app.post("/change_visual_properties", tags=["Network Operations"])
 async def change_visual_properties_tool(request: VisualPropertiesRequest):
     """
-    Change visual properties of nodes or edges.
+    ノードまたはエッジの視覚属性を変更します。
+    
+    Parameters:
+        request (VisualPropertiesRequest): プロパティタイプと値を含むリクエストオブジェクト
+    
+    Returns:
+        Dict: 変更結果（成功した場合はsuccess=True、変更された視覚属性）
     """
     try:
         return change_visual_properties(network_state, request.property_type, request.property_value, request.property_mapping)
@@ -599,7 +827,13 @@ async def change_visual_properties_tool(request: VisualPropertiesRequest):
 @app.post("/recommend_layout", tags=["Network Operations"])
 async def recommend_layout(request: QuestionRequest):
     """
-    Recommend a layout algorithm based on user's question or network properties.
+    ユーザーの質問やネットワークプロパティに基づいてレイアウトアルゴリズムを推奨します。
+    
+    Parameters:
+        request (QuestionRequest): ユーザーの質問を含むリクエストオブジェクト
+    
+    Returns:
+        Dict: 推奨結果（成功した場合はsuccess=True、推奨レイアウト、推奨理由）
     """
     try:
         if not request.question:
@@ -668,10 +902,518 @@ async def recommend_layout(request: QuestionRequest):
             "error": str(e)
         }
 
+@app.post("/graphml_layout", tags=["GraphML Operations"])
+async def graphml_layout(request: GraphMLLayoutRequest):
+    """
+    GraphML形式のネットワークデータにレイアウトアルゴリズムを適用します。
+    
+    Parameters:
+        request (GraphMLLayoutRequest): GraphMLデータとレイアウト情報を含むリクエストオブジェクト
+        
+    Returns:
+        GraphMLResponse: 更新されたGraphMLデータを含むレスポンス
+    """
+    try:
+        if not request.graphml_content:
+            return GraphMLResponse(
+                success=False,
+                error="GraphML content is required"
+            )
+        
+        # Import network tools functions
+        try:
+            from tools.network_tools import apply_layout_to_graphml
+        except ImportError:
+            return GraphMLResponse(
+                success=False,
+                error="Failed to import required module: apply_layout_to_graphml"
+            )
+        
+        # Apply layout to GraphML data
+        result = apply_layout_to_graphml(
+            request.graphml_content,
+            request.layout_type,
+            request.layout_params
+        )
+        
+        if result["success"]:
+            return GraphMLResponse(
+                success=True,
+                graphml_content=result["graphml_content"],
+                message=f"Successfully applied {request.layout_type} layout to the network"
+            )
+        else:
+            return GraphMLResponse(
+                success=False,
+                error=result.get("error", "Unknown error applying layout")
+            )
+    except Exception as e:
+        return GraphMLResponse(
+            success=False,
+            error=f"Error applying layout: {str(e)}"
+        )
+
+@app.post("/graphml_centrality", tags=["GraphML Operations"])
+async def graphml_centrality(request: GraphMLCentralityRequest):
+    """
+    GraphML形式のネットワークデータに中心性指標を計算します。
+    
+    Parameters:
+        request (GraphMLCentralityRequest): GraphMLデータと中心性タイプを含むリクエストオブジェクト
+        
+    Returns:
+        GraphMLResponse: 中心性値を含む更新されたGraphMLデータを含むレスポンス
+    """
+    try:
+        if not request.graphml_content:
+            return GraphMLResponse(
+                success=False,
+                error="GraphML content is required"
+            )
+        
+        # Import network tools functions
+        try:
+            from tools.network_tools import calculate_centrality_for_graphml
+        except ImportError:
+            return GraphMLResponse(
+                success=False,
+                error="Failed to import required module: calculate_centrality_for_graphml"
+            )
+        
+        # Calculate centrality for GraphML data
+        result = calculate_centrality_for_graphml(
+            request.graphml_content,
+            request.centrality_type
+        )
+        
+        if result["success"]:
+            return GraphMLResponse(
+                success=True,
+                graphml_content=result["graphml_content"],
+                message=f"Successfully calculated {request.centrality_type} centrality"
+            )
+        else:
+            return GraphMLResponse(
+                success=False,
+                error=result.get("error", "Unknown error calculating centrality")
+            )
+    except Exception as e:
+        return GraphMLResponse(
+            success=False,
+            error=f"Error calculating centrality: {str(e)}"
+        )
+
+@app.post("/graphml_node_info", tags=["GraphML Operations"])
+async def graphml_node_info(request: GraphMLNodeInfoRequest):
+    """
+    GraphML形式のネットワークデータから特定のノードの情報を取得します。
+    
+    Parameters:
+        request (GraphMLNodeInfoRequest): GraphMLデータとノードIDリストを含むリクエストオブジェクト
+        
+    Returns:
+        Dict: ノード情報と更新されたGraphMLデータを含むレスポンス
+    """
+    try:
+        if not request.graphml_content:
+            return {
+                "success": False,
+                "error": "GraphML content is required"
+            }
+        
+        # Import network tools functions
+        try:
+            from tools.network_tools import get_node_info_from_graphml
+        except ImportError:
+            return {
+                "success": False,
+                "error": "Failed to import required module: get_node_info_from_graphml"
+            }
+        
+        # Get node info from GraphML data
+        result = get_node_info_from_graphml(
+            request.graphml_content,
+            request.node_ids
+        )
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "node_info": result["node_info"],
+                "graphml_content": result["graphml_content"]
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Unknown error getting node info")
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error getting node info: {str(e)}"
+        }
+
+@app.post("/graphml_highlight_nodes", tags=["GraphML Operations"])
+async def graphml_highlight_nodes(request: GraphMLHighlightNodesRequest):
+    """
+    GraphML形式のネットワークデータ内の特定のノードをハイライトします。
+    
+    Parameters:
+        request (GraphMLHighlightNodesRequest): GraphMLデータとハイライト情報を含むリクエストオブジェクト
+        
+    Returns:
+        GraphMLResponse: ハイライトされたノードを含む更新されたGraphMLデータを含むレスポンス
+    """
+    try:
+        if not request.graphml_content:
+            return GraphMLResponse(
+                success=False,
+                error="GraphML content is required"
+            )
+        
+        # Import network tools functions
+        try:
+            from tools.network_tools import highlight_nodes_in_graphml
+        except ImportError:
+            return GraphMLResponse(
+                success=False,
+                error="Failed to import required module: highlight_nodes_in_graphml"
+            )
+        
+        # Highlight nodes in GraphML data
+        result = highlight_nodes_in_graphml(
+            request.graphml_content,
+            request.node_ids,
+            request.highlight_color
+        )
+        
+        if result["success"]:
+            return GraphMLResponse(
+                success=True,
+                graphml_content=result["graphml_content"],
+                message=f"Successfully highlighted {len(request.node_ids)} nodes"
+            )
+        else:
+            return GraphMLResponse(
+                success=False,
+                error=result.get("error", "Unknown error highlighting nodes")
+            )
+    except Exception as e:
+        return GraphMLResponse(
+            success=False,
+            error=f"Error highlighting nodes: {str(e)}"
+        )
+
+@app.post("/graphml_visual_properties", tags=["GraphML Operations"])
+async def graphml_visual_properties(request: GraphMLVisualPropertiesRequest):
+    """
+    GraphML形式のネットワークデータの視覚属性を変更します。
+    
+    Parameters:
+        request (GraphMLVisualPropertiesRequest): GraphMLデータと視覚属性情報を含むリクエストオブジェクト
+        
+    Returns:
+        GraphMLResponse: 更新された視覚属性を含むGraphMLデータを含むレスポンス
+    """
+    try:
+        if not request.graphml_content:
+            return GraphMLResponse(
+                success=False,
+                error="GraphML content is required"
+            )
+        
+        # Import network tools functions
+        try:
+            from tools.network_tools import change_visual_properties_in_graphml
+        except ImportError:
+            return GraphMLResponse(
+                success=False,
+                error="Failed to import required module: change_visual_properties_in_graphml"
+            )
+        
+        # Change visual properties in GraphML data
+        result = change_visual_properties_in_graphml(
+            request.graphml_content,
+            request.property_type,
+            request.property_value,
+            request.property_mapping
+        )
+        
+        if result["success"]:
+            return GraphMLResponse(
+                success=True,
+                graphml_content=result["graphml_content"],
+                message=f"Successfully changed {request.property_type} to {request.property_value}"
+            )
+        else:
+            return GraphMLResponse(
+                success=False,
+                error=result.get("error", "Unknown error changing visual properties")
+            )
+    except Exception as e:
+        return GraphMLResponse(
+            success=False,
+            error=f"Error changing visual properties: {str(e)}"
+        )
+
+@app.post("/graphml_network_info", tags=["GraphML Operations"])
+async def graphml_network_info(request: GraphMLRequest):
+    """
+    GraphML形式のネットワークデータから情報を取得します。
+    
+    Parameters:
+        request (GraphMLRequest): GraphMLデータを含むリクエストオブジェクト
+        
+    Returns:
+        Dict: ネットワーク情報と更新されたGraphMLデータを含むレスポンス
+    """
+    try:
+        if not request.graphml_content:
+            return {
+                "success": False,
+                "error": "GraphML content is required"
+            }
+        
+        # Import network tools functions
+        try:
+            from tools.network_tools import get_network_info_from_graphml
+        except ImportError:
+            return {
+                "success": False,
+                "error": "Failed to import required module: get_network_info_from_graphml"
+            }
+        
+        # Get network info from GraphML data
+        result = get_network_info_from_graphml(request.graphml_content)
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "network_info": result["network_info"],
+                "graphml_content": result["graphml_content"]
+            }
+        else:
+            return {
+                "success": False,
+                "error": result.get("error", "Unknown error getting network info")
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error getting network info: {str(e)}"
+        }
+
+@app.post("/graphml_chat", tags=["GraphML Operations"])
+async def graphml_chat(request: GraphMLChatMessageRequest):
+    """
+    GraphMLデータを含むチャットメッセージを処理します。
+    
+    Parameters:
+        request (GraphMLChatMessageRequest): チャットメッセージとGraphMLデータを含むリクエストオブジェクト
+        
+    Returns:
+        Dict: 処理結果と更新されたGraphMLデータを含むレスポンス
+    """
+    try:
+        if not request.message:
+            return {
+                "success": False,
+                "error": "Message is required"
+            }
+        
+        # If GraphML content is not provided, use default message processing
+        if not request.graphml_content:
+            return await process_chat_message(ChatMessageRequest(message=request.message))
+        
+        # Parse the GraphML string to get a NetworkX graph
+        try:
+            from tools.network_tools import parse_graphml_string
+        except ImportError:
+            return {
+                "success": False,
+                "error": "Failed to import required module: parse_graphml_string"
+            }
+        
+        result = parse_graphml_string(request.graphml_content)
+        
+        if not result["success"]:
+            return {
+                "success": False,
+                "error": f"Error parsing GraphML data: {result.get('error', 'Unknown error')}"
+            }
+        
+        # Temporarily update network state with the GraphML data
+        temp_network_state = network_state.copy()
+        network_state["graph"] = result["graph"]
+        network_state["positions"] = result["nodes"]
+        network_state["edges"] = result["edges"]
+        
+        # Process chat message
+        chat_result = await process_chat_message(ChatMessageRequest(message=request.message))
+        
+        # Export updated network to GraphML
+        try:
+            from tools.network_tools import export_network_as_graphml
+        except ImportError:
+            # Restore original network state
+            network_state.update(temp_network_state)
+            return {
+                "success": False,
+                "error": "Failed to import required module: export_network_as_graphml"
+            }
+        
+        export_result = export_network_as_graphml(
+            network_state["graph"],
+            positions=network_state["positions"],
+            visual_properties=network_state["visual_properties"]
+        )
+        
+        # Restore original network state
+        network_state.update(temp_network_state)
+        
+        if not export_result["success"]:
+            return {
+                "success": False,
+                "error": f"Error exporting updated network to GraphML: {export_result.get('error', 'Unknown error')}"
+            }
+        
+        # Return chat result with updated GraphML
+        if chat_result["success"]:
+            return {
+                "success": True,
+                "content": chat_result.get("content", ""),
+                "graphml_content": export_result["content"],
+                "networkUpdate": chat_result.get("networkUpdate")
+            }
+        else:
+            return {
+                "success": False,
+                "content": chat_result.get("content", ""),
+                "error": chat_result.get("error", "Unknown error processing chat message")
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Error processing chat message: {str(e)}"
+        }
+
+@app.post("/import_graphml", tags=["Network Operations"])
+async def import_graphml(request: GraphMLRequest):
+    """
+    GraphML形式の文字列からネットワークをインポートします。
+    
+    Parameters:
+        request (GraphMLRequest): GraphML形式のデータを含むリクエストオブジェクト
+    
+    Returns:
+        Dict: インポート結果（成功した場合はsuccess=True、ノード、エッジ情報）
+    """
+    try:
+        if not request.graphml_content:
+            return {
+                "success": False,
+                "error": "GraphML content is required"
+            }
+        
+        # Parse the GraphML string
+        result = parse_graphml_string(request.graphml_content)
+        
+        if result["success"]:
+            # Update network state
+            network_state["graph"] = result["graph"]
+            network_state["positions"] = result["nodes"]
+            network_state["edges"] = result["edges"]
+            
+            # Apply default layout
+            layout_result = await change_layout(LayoutRequest(layout_type="spring"))
+            
+            return {
+                "success": True,
+                "nodes": network_state["positions"],
+                "edges": network_state["edges"],
+                "layout": network_state["layout"],
+                "layout_params": network_state["layout_params"]
+            }
+        else:
+            return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/export_graphml", tags=["Network Operations"])
+async def export_graphml():
+    """
+    現在のネットワークをGraphML形式でエクスポートします。
+    
+    標準化されたGraphML形式で、ノードには名前（name）、色（color）、サイズ(size)、説明（description）の属性が含まれます。
+    
+    Returns:
+        Dict: エクスポート結果（成功した場合はsuccess=True、GraphML形式のコンテンツ）
+    """
+    try:
+        G = network_state["graph"]
+        if not G:
+            return {
+                "success": False,
+                "error": "No network data available"
+            }
+        
+        # Export the network as GraphML
+        result = export_network_as_graphml(
+            G, 
+            positions=network_state["positions"],
+            visual_properties=network_state["visual_properties"]
+        )
+        
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/convert_graphml", tags=["Network Operations"])
+async def convert_graphml(request: GraphMLConvertRequest):
+    """
+    任意のGraphMLデータを標準形式に変換します。
+    
+    標準化されたGraphML形式では、ノードには名前（name）、色（color）、サイズ(size)、説明（description）の属性が含まれます。
+    
+    Parameters:
+        request (GraphMLConvertRequest): 変換する元のGraphMLデータを含むリクエストオブジェクト
+    
+    Returns:
+        Dict: 変換結果（成功した場合はsuccess=True、標準化されたGraphML形式のコンテンツ）
+    """
+    try:
+        if not request.graphml_content:
+            return {
+                "success": False,
+                "error": "GraphML content is required"
+            }
+        
+        # Convert the GraphML to standard format
+        result = convert_to_standard_graphml(request.graphml_content)
+        
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.post("/process_chat_message", tags=["Network Operations"])
 async def process_chat_message(request: ChatMessageRequest):
     """
-    Process a chat message and execute network operations.
+    チャットメッセージを処理し、ネットワーク操作を実行します。
+    
+    Parameters:
+        request (ChatMessageRequest): 処理するチャットメッセージを含むリクエストオブジェクト
+    
+    Returns:
+        Dict: 処理結果（成功した場合はsuccess=True、応答内容、ネットワーク更新情報（ある場合））
     """
     try:
         if not request.message:
@@ -1103,6 +1845,269 @@ async def mcp_recommend_layout(request: Request):
             "error": str(e)
         }
 
+@app.post("/mcp/tools/graphml_layout")
+async def mcp_graphml_layout(request: Request):
+    """
+    Apply a layout algorithm to a network in GraphML format.
+    
+    Parameters:
+        request (Request): FastAPI request with GraphML content and layout info
+    
+    Returns:
+        Dict: Updated GraphML content with node positions
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await graphml_layout(GraphMLLayoutRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/graphml_centrality")
+async def mcp_graphml_centrality(request: Request):
+    """
+    Calculate centrality metrics for a network in GraphML format.
+    
+    Parameters:
+        request (Request): FastAPI request with GraphML content and centrality type
+    
+    Returns:
+        Dict: Updated GraphML content with centrality values
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await graphml_centrality(GraphMLCentralityRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/graphml_node_info")
+async def mcp_graphml_node_info(request: Request):
+    """
+    Get information about specific nodes in a network in GraphML format.
+    
+    Parameters:
+        request (Request): FastAPI request with GraphML content and node IDs
+    
+    Returns:
+        Dict: Node information and updated GraphML content
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await graphml_node_info(GraphMLNodeInfoRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/graphml_highlight_nodes")
+async def mcp_graphml_highlight_nodes(request: Request):
+    """
+    Highlight specific nodes in a network in GraphML format.
+    
+    Parameters:
+        request (Request): FastAPI request with GraphML content and highlight info
+    
+    Returns:
+        Dict: Updated GraphML content with highlighted nodes
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await graphml_highlight_nodes(GraphMLHighlightNodesRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/graphml_visual_properties")
+async def mcp_graphml_visual_properties(request: Request):
+    """
+    Change visual properties of nodes or edges in a network in GraphML format.
+    
+    Parameters:
+        request (Request): FastAPI request with GraphML content and visual property info
+    
+    Returns:
+        Dict: Updated GraphML content with changed visual properties
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await graphml_visual_properties(GraphMLVisualPropertiesRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/graphml_network_info")
+async def mcp_graphml_network_info(request: Request):
+    """
+    Get information about a network in GraphML format.
+    
+    Parameters:
+        request (Request): FastAPI request with GraphML content
+    
+    Returns:
+        Dict: Network information and updated GraphML content
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await graphml_network_info(GraphMLRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/graphml_chat")
+async def mcp_graphml_chat(request: Request):
+    """
+    Process a chat message with GraphML data.
+    
+    Parameters:
+        request (Request): FastAPI request with chat message and GraphML content
+    
+    Returns:
+        Dict: Processing result and updated GraphML content
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await graphml_chat(GraphMLChatMessageRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/import_graphml")
+async def mcp_import_graphml(request: Request):
+    """
+    Import a network from GraphML format string.
+    
+    Parameters:
+        request (Request): FastAPI request with GraphML content
+    
+    Returns:
+        Dict: Import result with network data
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await import_graphml(GraphMLRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/export_graphml")
+async def mcp_export_graphml(request: Request):
+    """
+    Export the current network as GraphML format.
+    
+    Returns:
+        Dict: Export result with GraphML content
+    """
+    try:
+        # Call the handler function
+        result = await export_graphml()
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.post("/mcp/tools/convert_graphml")
+async def mcp_convert_graphml(request: Request):
+    """
+    Convert any GraphML data to the standard format.
+    
+    Parameters:
+        request (Request): FastAPI request with GraphML content to convert
+    
+    Returns:
+        Dict: Conversion result with standardized GraphML content
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        arguments = body.get("arguments", {})
+        
+        # Call the handler function
+        result = await convert_graphml(GraphMLConvertRequest(**arguments))
+        
+        # Return response
+        return result
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 @app.post("/mcp/tools/process_chat_message")
 async def mcp_process_chat_message(request: Request):
     """
@@ -1183,6 +2188,141 @@ async def mcp_manifest():
                         "file_type": {
                             "type": "string",
                             "description": "MIME type of the file"
+                        }
+                    }
+                },
+                {
+                    "name": "import_graphml",
+                    "description": "Import a network from GraphML format string",
+                    "parameters": {
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML format string"
+                        }
+                    }
+                },
+                {
+                    "name": "export_graphml",
+                    "description": "Export the current network as GraphML format",
+                    "parameters": {}
+                },
+                {
+                    "name": "convert_graphml",
+                    "description": "Convert any GraphML data to the standard format with name, color, size, and description attributes",
+                    "parameters": {
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML content to convert"
+                        }
+                    }
+                },
+                {
+                    "name": "graphml_layout",
+                    "description": "Apply a layout algorithm to a network in GraphML format",
+                    "parameters": {
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML format string"
+                        },
+                        "layout_type": {
+                            "type": "string",
+                            "description": "Type of layout algorithm"
+                        },
+                        "layout_params": {
+                            "type": "object",
+                            "description": "Parameters for the layout algorithm"
+                        }
+                    }
+                },
+                {
+                    "name": "graphml_centrality",
+                    "description": "Calculate centrality metrics for a network in GraphML format",
+                    "parameters": {
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML format string"
+                        },
+                        "centrality_type": {
+                            "type": "string",
+                            "description": "Type of centrality to calculate"
+                        }
+                    }
+                },
+                {
+                    "name": "graphml_node_info",
+                    "description": "Get information about specific nodes in a network in GraphML format",
+                    "parameters": {
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML format string"
+                        },
+                        "node_ids": {
+                            "type": "array",
+                            "description": "List of node IDs to get information for"
+                        }
+                    }
+                },
+                {
+                    "name": "graphml_highlight_nodes",
+                    "description": "Highlight specific nodes in a network in GraphML format",
+                    "parameters": {
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML format string"
+                        },
+                        "node_ids": {
+                            "type": "array",
+                            "description": "List of node IDs to highlight"
+                        },
+                        "highlight_color": {
+                            "type": "string",
+                            "description": "Color to use for highlighting"
+                        }
+                    }
+                },
+                {
+                    "name": "graphml_visual_properties",
+                    "description": "Change visual properties of nodes or edges in a network in GraphML format",
+                    "parameters": {
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML format string"
+                        },
+                        "property_type": {
+                            "type": "string",
+                            "description": "Type of property to change"
+                        },
+                        "property_value": {
+                            "type": "string",
+                            "description": "Value to set for the property"
+                        },
+                        "property_mapping": {
+                            "type": "object",
+                            "description": "Optional mapping of node/edge IDs to property values"
+                        }
+                    }
+                },
+                {
+                    "name": "graphml_network_info",
+                    "description": "Get information about a network in GraphML format",
+                    "parameters": {
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML format string"
+                        }
+                    }
+                },
+                {
+                    "name": "graphml_chat",
+                    "description": "Process a chat message with GraphML data",
+                    "parameters": {
+                        "message": {
+                            "type": "string",
+                            "description": "The chat message to process"
+                        },
+                        "graphml_content": {
+                            "type": "string",
+                            "description": "GraphML format string (optional)"
                         }
                     }
                 },
