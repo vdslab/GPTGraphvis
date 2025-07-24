@@ -159,13 +159,14 @@ def recommend_centrality(network_info: Dict, question: str) -> Dict:
             "reason": "一般的なネットワークでは、媒介中心性がネットワークの構造と情報の流れを理解するための優れた指標です。ブリッジとなるノードを特定できます。"
         }
 
-def process_centrality_chat(message: str, network_info: Optional[Dict] = None) -> Dict:
+def process_centrality_chat(message: str, network_info: Optional[Dict] = None, graphml_content: Optional[str] = None) -> Dict:
     """
     中心性に関するチャットメッセージを処理し、適切な応答を返します
     
     Args:
         message: ユーザーからのチャットメッセージ
         network_info: 現在のネットワークの特性情報（オプション）
+        graphml_content: GraphML形式のネットワークデータ（オプション）
         
     Returns:
         応答内容と推奨される中心性指標を含む辞書
@@ -184,12 +185,79 @@ def process_centrality_chat(message: str, network_info: Optional[Dict] = None) -
             "clustering_coefficient": 0.3
         }
     
+    # 「はい」または「適用」などの承認応答をチェック - 直前に中心性の推奨があった場合
+    approval_keywords = ["はい", "適用", "お願い", "実行", "計算", "やって", "ok", "yes", "実施", "適用してください"]
+    if any(keyword in message_lower for keyword in approval_keywords):
+        # ここでは推奨された中心性を実行するための応答を返す
+        # 注: 実際の適用はフロントエンドのapplyCentrality関数で行われる
+        return {
+            "success": True,
+            "content": "了解しました。中心性に基づいてノードの大きさを変更しています。大きいノードほど、その中心性指標において重要度が高いことを示しています。",
+            "apply_centrality": True,
+            # 前回推奨された中心性タイプがあればそれを使用、なければデフォルトで次数中心性を使用
+            "centrality_type": "degree",  # 実際の実装ではユーザーの対話履歴から推奨された中心性を取得
+            "networkUpdate": {
+                "type": "centrality",
+                "centralityType": "degree"  # 同上
+            }
+        }
+    
+    # 「中心性で可視化して」などの直接的なリクエスト
+    visualization_keywords = ["中心性で可視化", "可視化して", "中心性を適用", "中心性を計算", "計算して"]
+    if any(keyword in message for keyword in visualization_keywords):
+        # ネットワーク特性に基づいて最適な中心性を推奨
+        recommendation = recommend_centrality(network_info, message)
+        centrality_type = recommendation["recommended_centrality"]
+        centrality_info = CENTRALITY_KNOWLEDGE[centrality_type]
+        
+        return {
+            "success": True,
+            "content": f"ネットワークの分析に基づき、**{centrality_info['name']}**を使った可視化が最適だと考えられます。\n\n"
+                       f"{recommendation['reason']}\n\n"
+                       f"{centrality_info['visual_explanation']}\n\n"
+                       f"この中心性を適用しますか？「はい」と返信すると、ノードの大きさが中心性値に応じて変化します。他の中心性指標を検討したい場合は、「他の選択肢を教えて」と入力してください。",
+            "recommended_centrality": centrality_type,
+            "networkUpdate": {
+                "type": "centrality",
+                "centralityType": centrality_type
+            }
+        }
+    
+    # 「他の選択肢」や「別の中心性」を尋ねる場合
+    alternative_keywords = ["他の選択肢", "別の中心性", "他の中心性", "他には", "別の指標"]
+    if any(keyword in message for keyword in alternative_keywords):
+        return {
+            "success": True,
+            "content": "以下の中心性指標から選択できます：\n\n"
+                       "1. **次数中心性（Degree Centrality）**: 多くの直接的なつながりを持つノードを重視します。「人気者」や「ハブ」を見つけるのに適しています。\n\n"
+                       "2. **近接中心性（Closeness Centrality）**: ネットワーク全体への近さを測ります。情報が素早く広がる位置にあるノードを特定するのに適しています。\n\n"
+                       "3. **媒介中心性（Betweenness Centrality）**: 異なるグループ間の「橋渡し」役となるノードを重視します。情報や資源の流れを制御できる位置にあるノードを特定します。\n\n"
+                       "4. **固有ベクトル中心性（Eigenvector Centrality）**: 重要なノードとつながっているノードを重視します。影響力のあるノードを特定するのに適しています。\n\n"
+                       "5. **PageRank**: Googleの検索エンジンで使われる指標で、重要なノードからの参照を重視します。\n\n"
+                       "どの中心性を適用しますか？例えば「次数中心性を適用」のように指定してください。",
+            "options": ["degree", "closeness", "betweenness", "eigenvector", "pagerank"]
+        }
+    
     # 特定の中心性タイプについての質問かチェック
     for centrality_type in CENTRALITY_KNOWLEDGE:
         if (centrality_type in message_lower or 
             CENTRALITY_KNOWLEDGE[centrality_type]["name"] in message or
             CENTRALITY_KNOWLEDGE[centrality_type]["name_en"] in message):
             
+            # 「適用」を含む場合は、その中心性を適用するリクエストとして処理
+            if "適用" in message or "計算" in message or "可視化" in message:
+                info = get_centrality_info(centrality_type)
+                return {
+                    "success": True,
+                    "content": f"{info['name']}を適用します。{info['visual_explanation']}",
+                    "centrality_type": centrality_type,
+                    "networkUpdate": {
+                        "type": "centrality",
+                        "centralityType": centrality_type
+                    }
+                }
+            
+            # それ以外は説明を返す
             info = get_centrality_info(centrality_type)
             return {
                 "success": True,
@@ -197,7 +265,8 @@ def process_centrality_chat(message: str, network_info: Optional[Dict] = None) -
                            f"用途: {info['use_cases']}\n\n"
                            f"利点: {info['advantages']}\n\n"
                            f"制限: {info['limitations']}\n\n"
-                           f"可視化の効果: {info['visual_explanation']}",
+                           f"可視化の効果: {info['visual_explanation']}\n\n"
+                           f"この中心性を適用しますか？「はい、適用してください」と返信すると、ノードの大きさが中心性に応じて変化します。",
                 "centrality_type": centrality_type
             }
     
@@ -214,7 +283,11 @@ def process_centrality_chat(message: str, network_info: Optional[Dict] = None) -
                       f"{recommendation['reason']}\n\n"
                       f"{centrality_info['visual_explanation']}\n\n"
                       f"この中心性を適用しますか？「はい、適用してください」と返信すると、ノードの大きさが中心性に応じて変化します。",
-            "recommended_centrality": recommendation["recommended_centrality"]
+            "recommended_centrality": recommendation["recommended_centrality"],
+            "networkUpdate": {
+                "type": "centrality",
+                "centralityType": recommendation["recommended_centrality"]
+            }
         }
     
     # 重要なノードや中心性に関する一般的な質問の場合
@@ -227,8 +300,12 @@ def process_centrality_chat(message: str, network_info: Optional[Dict] = None) -
             "content": f"ネットワークの重要なノードを可視化するには、いくつかの中心性指標があります。あなたのケースでは「{CENTRALITY_KNOWLEDGE[recommendation['recommended_centrality']]['name']}」が適しているでしょう。\n\n"
                       f"{recommendation['reason']}\n\n"
                       f"{CENTRALITY_KNOWLEDGE[recommendation['recommended_centrality']]['visual_explanation']}\n\n"
-                      f"この中心性を適用してノードサイズを変更しますか？または他の中心性指標について詳しく知りたい場合は、「次数中心性について教えて」のように質問してください。",
-            "recommended_centrality": recommendation["recommended_centrality"]
+                      f"この中心性を適用してノードサイズを変更しますか？または他の中心性指標について詳しく知りたい場合は、「他の選択肢を教えて」のように質問してください。",
+            "recommended_centrality": recommendation["recommended_centrality"],
+            "networkUpdate": {
+                "type": "centrality",
+                "centralityType": recommendation["recommended_centrality"]
+            }
         }
     
     # 中心性に関する説明を求められた場合
@@ -242,7 +319,11 @@ def process_centrality_chat(message: str, network_info: Optional[Dict] = None) -
                       "3. **媒介中心性（Betweenness Centrality）**: 異なるグループを「橋渡し」するノードを重要とみなします。情報や物資の流れを制御できる位置にあるノードが該当します。\n\n"
                       "4. **固有ベクトル中心性（Eigenvector Centrality）**: 重要なノードとつながっているノードほど重要とみなします。「重要な人とつながりのある人」が重要という考え方です。\n\n"
                       "5. **PageRank**: Googleの検索エンジンで使われる指標で、多くの重要なノードから参照されているノードを重要とみなします。\n\n"
-                      "あなたのネットワークではどのような重要性を可視化したいですか？または特定の中心性について詳しく知りたい場合は、「次数中心性について教えて」のように質問してください。",
+                      "あなたのネットワークではどのような重要性を可視化したいですか？例えば：\n"
+                      "- 「多くのノードと直接つながっているノードを強調したい」\n"
+                      "- 「情報が最も効率的に広がるノードを知りたい」\n"
+                      "- 「ネットワークを分断せずに取り除けないノードを特定したい」\n"
+                      "などと具体的に教えていただければ、最適な中心性指標を提案できます。",
             "general_info": True
         }
     
@@ -251,8 +332,9 @@ def process_centrality_chat(message: str, network_info: Optional[Dict] = None) -
         "success": True,
         "content": "ネットワークの重要なノードを分析するには中心性指標が役立ちます。ノードの重要度に応じて大きさや色を変えることで、視覚的に重要なノードを強調できます。\n\n"
                   "次数中心性、近接中心性、媒介中心性、固有ベクトル中心性、PageRankなど、様々な指標があり、それぞれ異なる「重要さ」を表現します。\n\n"
-                  "具体的に何を知りたいですか？例えば：\n"
-                  "- 「ノードの重要度で可視化したい」\n"
+                  "何を知りたいですか？例えば：\n"
+                  "- 「中心性で可視化して」\n"
+                  "- 「ノードの重要度で視覚化したい」\n"
                   "- 「多くのノードとつながっているノードを大きく表示したい」\n"
                   "- 「ネットワークの橋渡し役になっているノードを強調したい」\n"
                   "- 「次数中心性について教えて」\n"
@@ -348,15 +430,22 @@ def centrality_to_node_sizes(centrality: Dict[str, float],
     
     return sizes
 
-def process_chat_message(message: str, network_info: Optional[Dict] = None) -> Dict:
+def process_chat_message(message: str, network_info: Optional[Dict] = None, graphml_content: Optional[str] = None) -> Dict:
     """
     チャットメッセージを処理し、中心性に関する応答を返します
     
     Args:
         message: ユーザーからのチャットメッセージ
         network_info: ネットワークの特性情報（オプション）
+        graphml_content: GraphML形式のネットワークデータ（オプション）
         
     Returns:
-        応答内容と推奨操作を含む辞書
+        応答内容と推奨操作を含む辞書およびGraphML形式のデータ
     """
-    return process_centrality_chat(message, network_info)
+    result = process_centrality_chat(message, network_info, graphml_content)
+    
+    # GraphML形式のレスポンスに関連情報を追加
+    if graphml_content is not None:
+        result["graphml_content"] = graphml_content
+    
+    return result

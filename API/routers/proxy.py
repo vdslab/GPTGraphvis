@@ -12,7 +12,7 @@ import models
 import auth
 
 # NetworkX MCP server URL
-NETWORKX_MCP_URL = "http://networkx-mcp:8001/mcp"
+NETWORKX_MCP_URL = "http://networkx-mcp:8001"
 
 router = APIRouter(
     prefix="/proxy/networkx",
@@ -34,9 +34,7 @@ async def proxy_tool(
         body = await request.json()
         
         # Format request for the NetworkX MCP server
-        mcp_request = {
-            "arguments": body.get("arguments", {})
-        }
+        mcp_request = body.get("arguments", {})
         
         # Forward request to NetworkX MCP server
         async with httpx.AsyncClient() as client:

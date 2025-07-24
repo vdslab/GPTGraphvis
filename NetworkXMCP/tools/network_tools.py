@@ -404,10 +404,18 @@ def export_network_as_graphml(G: nx.Graph, positions: List[Dict[str, Any]] = Non
 
 def convert_to_standard_graphml(graphml_content: str) -> Dict[str, Any]:
     """
-    Convert any GraphML data to the standard format with required node attributes.
+    あらゆるGraphMLデータを標準形式に変換します。
+    
+    標準化されたGraphML形式では、ノードには以下の属性が含まれます：
+    - name: ノードの名前 (表示ラベルとして使用)
+    - color: ノードの色 (16進数カラーコードまたはRGB値)
+    - size: ノードのサイズ (float値)
+    - description: ノードの説明 (詳細情報として使用)
+    
+    これらの属性がない場合は自動的に追加されます。
     
     Args:
-        graphml_content: GraphML content as string
+        graphml_content: GraphML形式の文字列
         
     Returns:
         Dictionary with standardized GraphML content and parsed graph
@@ -417,30 +425,79 @@ def convert_to_standard_graphml(graphml_content: str) -> Dict[str, Any]:
         content_io = io.BytesIO(graphml_content.encode('utf-8'))
         G = nx.read_graphml(content_io)
         
-        # Add standard node attributes if not present
+        # 既存の属性を確認し、標準属性名へのマッピングを検出
+        attribute_mapping = {
+            'name': ['name', 'label', 'id', 'title', 'node_name', 'node_label'],
+            'color': ['color', 'colour', 'node_color', 'fill_color', 'fill', 'rgb', 'hex'],
+            'size': ['size', 'node_size', 'width', 'radius', 'scale'],
+            'description': ['description', 'desc', 'note', 'info', 'detail', 'tooltip']
+        }
+        
+        # 各ノードに標準属性を追加
         for node in G.nodes():
             node_str = str(node)
+            node_attrs = G.nodes[node]
             
-            # Set default attributes if not present
-            if 'name' not in G.nodes[node]:
-                G.nodes[node]['name'] = node_str
-                
-            if 'size' not in G.nodes[node]:
-                G.nodes[node]['size'] = "5.0"  # Default size
-                
-            if 'color' not in G.nodes[node]:
-                G.nodes[node]['color'] = "#1d4ed8"  # Default color
-                
-            if 'description' not in G.nodes[node]:
-                G.nodes[node]['description'] = f"Node {node_str}"
+            # 名前属性の処理
+            if 'name' not in node_attrs:
+                # 代替属性を探す
+                for alt_attr in attribute_mapping['name']:
+                    if alt_attr in node_attrs and alt_attr != 'name':
+                        node_attrs['name'] = str(node_attrs[alt_attr])
+                        break
+                else:
+                    # 代替属性が見つからない場合はノードIDを使用
+                    node_attrs['name'] = node_str
+            
+            # 色属性の処理
+            if 'color' not in node_attrs:
+                # 代替属性を探す
+                for alt_attr in attribute_mapping['color']:
+                    if alt_attr in node_attrs and alt_attr != 'color':
+                        node_attrs['color'] = str(node_attrs[alt_attr])
+                        break
+                else:
+                    # 代替属性が見つからない場合はデフォルト色を使用
+                    node_attrs['color'] = "#1d4ed8"  # Default color
+            
+            # サイズ属性の処理
+            if 'size' not in node_attrs:
+                # 代替属性を探す
+                for alt_attr in attribute_mapping['size']:
+                    if alt_attr in node_attrs and alt_attr != 'size':
+                        node_attrs['size'] = str(node_attrs[alt_attr])
+                        break
+                else:
+                    # 代替属性が見つからない場合はデフォルトサイズを使用
+                    node_attrs['size'] = "5.0"  # Default size
+            
+            # 説明属性の処理
+            if 'description' not in node_attrs:
+                # 代替属性を探す
+                for alt_attr in attribute_mapping['description']:
+                    if alt_attr in node_attrs and alt_attr != 'description':
+                        node_attrs['description'] = str(node_attrs[alt_attr])
+                        break
+                else:
+                    # 代替属性が見つからない場合はデフォルト説明を使用
+                    node_attrs['description'] = f"Node {node_str}"
         
-        # Add graph-level attributes
+        # グラフレベルの属性を追加
         G.graph['node_default_size'] = "5.0"
         G.graph['node_default_color'] = "#1d4ed8"
         G.graph['edge_default_width'] = "1.0"
         G.graph['edge_default_color'] = "#94a3b8"
+        G.graph['graph_format_version'] = "1.0"
+        G.graph['graph_format_type'] = "standardized_graphml"
         
-        # Export to standardized GraphML
+        # エッジにも標準的な属性を追加
+        for u, v, data in G.edges(data=True):
+            if 'width' not in data:
+                data['width'] = "1.0"
+            if 'color' not in data:
+                data['color'] = "#94a3b8"
+        
+        # 標準化されたGraphMLにエクスポート
         output = io.BytesIO()
         nx.write_graphml(G, output)
         output.seek(0)

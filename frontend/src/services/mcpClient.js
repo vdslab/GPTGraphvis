@@ -627,9 +627,84 @@ class MCPClient {
    */
   async processChatMessage(message) {
     try {
+      // 中心性に関する質問かどうかをチェック
+      const centralityKeywords = [
+        "中心性", "centrality", "重要度", "重要なノード", "ノードの大きさ", 
+        "重要", "中心", "センタリティ", "次数", "degree", "近接", "closeness", 
+        "媒介", "betweenness", "固有ベクトル", "eigenvector", "pagerank"
+      ];
+      
+      const isCentralityQuery = centralityKeywords.some(
+        keyword => message.toLowerCase().includes(keyword)
+      );
+      
+      // GraphMLベースのチャット処理を試みる
+      if (isCentralityQuery) {
+        try {
+          console.log("Detected centrality query, trying GraphML-based processing");
+          
+          // 現在のネットワークをGraphMLとしてエクスポート
+          const exportResult = await this.exportNetworkAsGraphML();
+          
+          if (exportResult && exportResult.success && exportResult.content) {
+            console.log("Successfully exported network as GraphML for chat processing");
+            
+            // GraphMLベースのチャット処理を実行
+            const result = await this.graphmlChat(message, exportResult.content);
+            
+            if (result && result.success) {
+              console.log("GraphML chat processing successful");
+              
+              // GraphMLコンテンツが返された場合、インポートして状態を更新
+              if (result.graphml_content) {
+                console.log("Importing updated GraphML from chat response");
+                const importResult = await this.importGraphML(result.graphml_content);
+                
+                if (importResult && importResult.success) {
+                  console.log("Successfully imported updated GraphML");
+                  
+                  // 中心性タイプを取得
+                  let centralityType = "degree"; // デフォルト
+                  if (result.recommended_centrality) {
+                    centralityType = result.recommended_centrality;
+                  } else if (result.centrality_type) {
+                    centralityType = result.centrality_type;
+                  }
+                  
+                  // レスポンスを返す
+                  return {
+                    success: true,
+                    content: result.content || "中心性に基づいてノードのサイズが更新されました。",
+                    networkUpdate: {
+                      type: "centrality",
+                      centralityType: centralityType
+                    }
+                  };
+                }
+              }
+              
+              // GraphMLコンテンツがない場合は通常のレスポンスを返す
+              return {
+                success: true,
+                content: result.content || "処理が完了しました。",
+                networkUpdate: result.networkUpdate || null
+              };
+            }
+          }
+        } catch (graphmlError) {
+          console.error("Error in GraphML-based chat processing:", graphmlError);
+          // エラーが発生した場合は従来の方法にフォールバック
+          console.log("Falling back to traditional chat processing");
+        }
+      }
+      
+      // 従来の方法でチャットメッセージを処理
       const result = await this.useTool("process_chat_message", {
         message,
       });
+
+      // 詳細なレスポンスログ出力（デバッグ用）
+      console.log("Process chat message raw response:", JSON.stringify(result));
 
       // 結果が正常に返ってきたか確認
       if (!result) {
@@ -649,24 +724,70 @@ class MCPClient {
         };
       }
 
-      // content属性がない場合は適切に処理
-      if (result.content === undefined && result.message !== undefined) {
-        result.content = result.message;
-      } else if (result.content === undefined) {
-        result.content = "応答内容が見つかりませんでした。";
+      // レスポンスフォーマットの互換性向上
+      // ケース1: content属性を持つ標準フォーマット
+      if (result.content !== undefined) {
+        // 既に適切なフォーマットなので、そのまま返す
+        return {
+          success: result.success !== undefined ? result.success : true,
+          content: result.content,
+          networkUpdate: result.networkUpdate || null
+        };
+      }
+      
+      // ケース2: messageプロパティを持つフォーマット
+      if (result.message !== undefined) {
+        return {
+          success: result.success !== undefined ? result.success : true,
+          content: result.message,
+          networkUpdate: result.networkUpdate || null
+        };
+      }
+      
+      // ケース3: NetworkXMCP/tools/centrality_chat.pyのprocess_chat_messageからの応答
+      // 直接contentフィールドにデータがある場合
+      if (result.success !== undefined && result.recommended_centrality !== undefined) {
+        const centralityType = result.recommended_centrality || "degree";
+        return {
+          success: true,
+          content: result.reason || "中心性に基づいてノードの重要度を視覚化します。",
+          recommended_centrality: centralityType,
+          networkUpdate: {
+            type: "centrality",
+            centralityType: centralityType
+          }
+        };
+      }
+      
+      // ケース4: 汎用的なキー変換
+      // 一般的に使われる可能性のあるキーをチェック
+      const possibleContentKeys = ['text', 'response', 'reply', 'answer', 'result'];
+      for (const key of possibleContentKeys) {
+        if (result[key] !== undefined && typeof result[key] === 'string') {
+          return {
+            success: true,
+            content: result[key],
+            networkUpdate: null
+          };
+        }
       }
 
-      // networkUpdateが存在するか確認
-      if (result.networkUpdate === undefined) {
-        result.networkUpdate = null;
+      // ケース5: フォールバック - 最も良い対応として全体をJSON文字列に変換
+      if (Object.keys(result).length > 0) {
+        // 応答を単純にJSON文字列として返す（デバッグ目的）
+        return {
+          success: true,
+          content: "処理が完了しました。詳細なレスポンス: " + JSON.stringify(result),
+          networkUpdate: null
+        };
       }
 
-      // successプロパティがない場合はtrueを設定
-      if (result.success === undefined) {
-        result.success = true;
-      }
-
-      return result;
+      // どの条件にも合わない場合のデフォルト応答
+      return {
+        success: true,
+        content: "応答を処理しました。",
+        networkUpdate: null
+      };
     } catch (error) {
       console.error("Error in processChatMessage:", error);
       // エラー発生時も適切なレスポンス形式で返す
