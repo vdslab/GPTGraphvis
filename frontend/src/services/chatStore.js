@@ -131,43 +131,151 @@ const useChatStore = create((set, get) => ({
     // Check for centrality requests
     if (messageLower.includes('centrality') || messageLower.includes('中心性') || 
         messageLower.includes('センタリティ') || messageLower.includes('measure') || 
-        messageLower.includes('指標')) {
+        messageLower.includes('指標') || messageLower.includes('重要度') || 
+        messageLower.includes('重要なノード') || messageLower.includes('ノードの大きさ')) {
       
+      // 特定の中心性タイプが明示的に指定されている場合
       for (const [centralityType, pattern] of Object.entries(centralityPatterns)) {
         if (pattern.test(messageLower)) {
           try {
-            const result = await networkStore.applyCentrality(centralityType);
+            // 承認キーワードが含まれている場合は直接適用
+            const approvalKeywords = ["適用", "実行", "計算", "やって", "ok", "yes", "実施", "お願い"];
+            const hasApproval = approvalKeywords.some(keyword => messageLower.includes(keyword));
             
-            if (result) {
-              return {
-                success: true,
-                content: `I've applied ${centralityType} centrality to the network. Nodes are now sized and colored based on their ${centralityType} centrality values.`,
-                networkUpdate: {
-                  type: 'centrality',
-                  centralityType: centralityType
+            if (hasApproval) {
+              const result = await networkStore.applyCentrality(centralityType);
+              
+              if (result) {
+                return {
+                  success: true,
+                  content: `${centralityType}中心性を適用しました。ノードのサイズと色は中心性値に基づいて変更されています。`,
+                  networkUpdate: {
+                    type: 'centrality',
+                    centralityType: centralityType
+                  }
+                };
+              } else {
+                return {
+                  success: false,
+                  content: `${centralityType}中心性の適用に失敗しました。後でもう一度お試しください。`
+                };
+              }
+            } else {
+              // 承認なしの場合は、中心性の説明と確認を求める
+              const centralityInfo = {
+                degree: {
+                  name: "次数中心性",
+                  description: "多くのノードと直接つながっているノードを重要とみなします。SNSで友達が多い人や、交通網で多くの路線が通る駅などが該当します。"
+                },
+                closeness: {
+                  name: "近接中心性",
+                  description: "ネットワーク全体の中心に位置し、他のノードへの距離が近いノードを重要とみなします。情報が速く広がる位置にあるノードなどが該当します。"
+                },
+                betweenness: {
+                  name: "媒介中心性",
+                  description: "異なるグループを「橋渡し」するノードを重要とみなします。情報や物資の流れを制御できる位置にあるノードが該当します。"
+                },
+                eigenvector: {
+                  name: "固有ベクトル中心性",
+                  description: "重要なノードとつながっているノードほど重要とみなします。「重要な人とつながりのある人」が重要という考え方です。"
+                },
+                pagerank: {
+                  name: "PageRank",
+                  description: "Googleの検索エンジンで使われる指標で、多くの重要なノードから参照されているノードを重要とみなします。"
                 }
               };
-            } else {
+              
+              const info = centralityInfo[centralityType] || { name: centralityType, description: "ノードの重要度を測る指標です。" };
+              
               return {
-                success: false,
-                content: `I couldn't apply ${centralityType} centrality. Please try again later.`
+                success: true,
+                content: `${info.name}は${info.description}\n\nこの中心性を適用しますか？「はい」と返信すると、ノードの大きさが中心性に応じて変化します。`,
+                recommended_centrality: centralityType
               };
             }
           } catch (error) {
-            console.error(`Error applying ${centralityType} centrality:`, error);
+            console.error(`Error processing ${centralityType} centrality request:`, error);
             return {
               success: false,
-              content: `I'm sorry, I encountered an error trying to apply ${centralityType} centrality. Please try again later.`
+              content: `${centralityType}中心性の処理中にエラーが発生しました。後でもう一度お試しください。`
             };
           }
         }
       }
       
-      // If no specific centrality was mentioned but "centrality" was
-      return {
-        success: true,
-        content: "You can apply the following centrality measures: Degree, Closeness, Betweenness, Eigenvector, and PageRank. Just ask me to apply any of these centrality measures."
-      };
+      // 承認メッセージの場合（「はい」「適用してください」など）
+      const approvalKeywords = ["はい", "適用", "お願い", "実行", "計算", "やって", "ok", "yes", "実施"];
+      if (approvalKeywords.some(keyword => messageLower.includes(keyword))) {
+        // 前回推奨された中心性タイプを取得（実際の実装ではユーザーの対話履歴から取得）
+        // ここでは簡易的にstoreから取得
+        const previousMessages = get().messages;
+        let recommendedCentrality = "degree"; // デフォルト
+        
+        // 直前のメッセージから推奨された中心性を探す
+        for (let i = previousMessages.length - 1; i >= 0; i--) {
+          const msg = previousMessages[i];
+          if (msg.role === 'assistant' && msg.recommended_centrality) {
+            recommendedCentrality = msg.recommended_centrality;
+            break;
+          }
+        }
+        
+        try {
+          const result = await networkStore.applyCentrality(recommendedCentrality);
+          
+          if (result) {
+            return {
+              success: true,
+              content: `了解しました。${recommendedCentrality}中心性に基づいてノードの大きさを変更しています。大きいノードほど、その中心性指標において重要度が高いことを示しています。`,
+              networkUpdate: {
+                type: 'centrality',
+                centralityType: recommendedCentrality
+              }
+            };
+          } else {
+            return {
+              success: false,
+              content: `中心性の適用に失敗しました。後でもう一度お試しください。`
+            };
+          }
+        } catch (error) {
+          console.error(`Error applying centrality:`, error);
+          return {
+            success: false,
+            content: `中心性の適用中にエラーが発生しました。後でもう一度お試しください。`
+          };
+        }
+      }
+      
+      // 特定の中心性が指定されておらず、「中心性」や「重要度」などの一般的なキーワードが含まれている場合
+      try {
+        // MCPクライアントを使用して中心性に関するチャット処理を行う
+        const result = await mcpClient.processChatMessage(message);
+        
+        // 中心性の推奨がある場合はそのまま返す
+        if (result && result.recommended_centrality) {
+          return result;
+        }
+        
+        // それ以外の場合は一般的な中心性の説明を返す
+        return {
+          success: true,
+          content: "ネットワークの重要なノードを分析するには中心性指標が役立ちます。以下の中心性指標から選択できます：\n\n" +
+                  "1. **次数中心性（Degree Centrality）**: 多くの直接的なつながりを持つノードを重視します。「人気者」や「ハブ」を見つけるのに適しています。\n\n" +
+                  "2. **近接中心性（Closeness Centrality）**: ネットワーク全体への近さを測ります。情報が素早く広がる位置にあるノードを特定するのに適しています。\n\n" +
+                  "3. **媒介中心性（Betweenness Centrality）**: 異なるグループ間の「橋渡し」役となるノードを重視します。情報や資源の流れを制御できる位置にあるノードを特定します。\n\n" +
+                  "4. **固有ベクトル中心性（Eigenvector Centrality）**: 重要なノードとつながっているノードを重視します。影響力のあるノードを特定するのに適しています。\n\n" +
+                  "5. **PageRank**: Googleの検索エンジンで使われる指標で、重要なノードからの参照を重視します。\n\n" +
+                  "どの中心性を適用しますか？例えば「次数中心性を適用」のように指定してください。あるいは、ネットワークの特性に基づいて最適な中心性を推奨することもできます。",
+          options: ["degree", "closeness", "betweenness", "eigenvector", "pagerank"]
+        };
+      } catch (error) {
+        console.error(`Error processing centrality request:`, error);
+        return {
+          success: false,
+          content: `中心性の処理中にエラーが発生しました。後でもう一度お試しください。`
+        };
+      }
     }
     
     // Check for color change requests

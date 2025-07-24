@@ -270,43 +270,103 @@ def process_centrality_chat(message: str, network_info: Optional[Dict] = None, g
                 "centrality_type": centrality_type
             }
     
-    # ノードの大きさ変更や重要なノードの可視化に関する直接的な質問の場合
-    node_size_keywords = ["ノードの大きさ", "大きく表示", "サイズを変更", "重要なノードを強調"]
+    # ノードの大きさ変更や重要なノードの可視化に関する一般的な質問の場合
+    node_size_keywords = ["ノードの大きさ", "大きく表示", "サイズを変更", "重要なノードを強調", "重要なノード", "重要度に応じて"]
+    
+    # 具体的な要望を示すキーワード
+    specific_request_keywords = {
+        "degree": ["接続数", "つながり", "次数", "友達", "フォロワー", "ハブ", "直接", "リンク数"],
+        "closeness": ["最短距離", "近い", "アクセス", "効率", "中心", "情報伝達", "情報拡散"],
+        "betweenness": ["橋渡し", "仲介", "制御", "経路", "コミュニティ間", "グループ間"],
+        "eigenvector": ["影響力", "重要な人", "権威", "質的", "連鎖", "重要なノードとつながり"],
+        "pagerank": ["ランキング", "評価", "参照", "引用", "Webページ"]
+    }
+    
+    # 具体的な要望があるかチェック
+    has_specific_request = False
+    specific_centrality_type = None
+    
+    for centrality_type, keywords in specific_request_keywords.items():
+        if any(keyword in message for keyword in keywords):
+            has_specific_request = True
+            specific_centrality_type = centrality_type
+            break
+    
     if any(keyword in message for keyword in node_size_keywords):
-        recommendation = recommend_centrality(network_info, message)
-        
-        centrality_info = CENTRALITY_KNOWLEDGE[recommendation['recommended_centrality']]
-        
-        return {
-            "success": True,
-            "content": f"ネットワークの重要なノードを大きさで表現するには、{centrality_info['name']}が最適です。\n\n"
-                      f"{recommendation['reason']}\n\n"
-                      f"{centrality_info['visual_explanation']}\n\n"
-                      f"この中心性を適用しますか？「はい、適用してください」と返信すると、ノードの大きさが中心性に応じて変化します。",
-            "recommended_centrality": recommendation["recommended_centrality"],
-            "networkUpdate": {
-                "type": "centrality",
-                "centralityType": recommendation["recommended_centrality"]
+        # 具体的な要望がある場合
+        if has_specific_request and specific_centrality_type:
+            centrality_info = CENTRALITY_KNOWLEDGE[specific_centrality_type]
+            
+            return {
+                "success": True,
+                "content": f"ご要望に基づき、**{centrality_info['name']}**を使った可視化が最適です。\n\n"
+                          f"{centrality_info['description']}\n\n"
+                          f"{centrality_info['visual_explanation']}\n\n"
+                          f"この中心性を適用しますか？「はい、適用してください」と返信すると、ノードの大きさが中心性に応じて変化します。",
+                "recommended_centrality": specific_centrality_type,
+                "networkUpdate": {
+                    "type": "centrality",
+                    "centralityType": specific_centrality_type
+                }
             }
-        }
+        # 具体的な要望がない場合は、中心性の概念と種類について説明
+        else:
+            return {
+                "success": True,
+                "content": "ネットワークの重要なノードを大きさで表現するには、中心性指標が役立ちます。中心性とは、ネットワーク内でのノードの重要度を測る指標です。\n\n"
+                          "中心性には様々な種類があり、ネットワークの特徴や分析目的によって最適な指標が異なります。主な中心性指標は以下の通りです：\n\n"
+                          "1. **次数中心性（Degree Centrality）**: 多くのノードと直接つながっているノードを重要とみなします。SNSで友達が多い人や、交通網で多くの路線が通る駅などが該当します。\n\n"
+                          "2. **近接中心性（Closeness Centrality）**: ネットワーク全体の中心に位置し、他のノードへの距離が近いノードを重要とみなします。情報が速く広がる位置にあるノードなどが該当します。\n\n"
+                          "3. **媒介中心性（Betweenness Centrality）**: 異なるグループを「橋渡し」するノードを重要とみなします。情報や物資の流れを制御できる位置にあるノードが該当します。\n\n"
+                          "4. **固有ベクトル中心性（Eigenvector Centrality）**: 重要なノードとつながっているノードほど重要とみなします。「重要な人とつながりのある人」が重要という考え方です。\n\n"
+                          "5. **PageRank**: Googleの検索エンジンで使われる指標で、多くの重要なノードから参照されているノードを重要とみなします。\n\n"
+                          "どのような重要性を可視化したいですか？例えば：\n"
+                          "- 「接続数が多いノードを大きく表示したい」\n"
+                          "- 「他のノードに最短の距離で行けるノードを大きくしたい」\n"
+                          "- 「コミュニティ間の橋渡し役となるノードを強調したい」\n"
+                          "- 「影響力のあるノードとつながっているノードを大きく表示したい」\n"
+                          "などと具体的に教えていただければ、最適な中心性指標を提案できます。",
+                "general_info": True
+            }
     
     # 重要なノードや中心性に関する一般的な質問の場合
     centrality_keywords = ["中心性", "centrality", "重要", "重要度", "中心", "影響力"]
     if any(keyword in message_lower for keyword in centrality_keywords):
-        recommendation = recommend_centrality(network_info, message)
-        
-        return {
-            "success": True,
-            "content": f"ネットワークの重要なノードを可視化するには、いくつかの中心性指標があります。あなたのケースでは「{CENTRALITY_KNOWLEDGE[recommendation['recommended_centrality']]['name']}」が適しているでしょう。\n\n"
-                      f"{recommendation['reason']}\n\n"
-                      f"{CENTRALITY_KNOWLEDGE[recommendation['recommended_centrality']]['visual_explanation']}\n\n"
-                      f"この中心性を適用してノードサイズを変更しますか？または他の中心性指標について詳しく知りたい場合は、「他の選択肢を教えて」のように質問してください。",
-            "recommended_centrality": recommendation["recommended_centrality"],
-            "networkUpdate": {
-                "type": "centrality",
-                "centralityType": recommendation["recommended_centrality"]
+        # 具体的な要望がある場合
+        if has_specific_request and specific_centrality_type:
+            centrality_info = CENTRALITY_KNOWLEDGE[specific_centrality_type]
+            
+            return {
+                "success": True,
+                "content": f"ご要望に基づき、**{centrality_info['name']}**を使った可視化が最適です。\n\n"
+                          f"{centrality_info['description']}\n\n"
+                          f"{centrality_info['visual_explanation']}\n\n"
+                          f"この中心性を適用しますか？「はい、適用してください」と返信すると、ノードの大きさが中心性に応じて変化します。",
+                "recommended_centrality": specific_centrality_type,
+                "networkUpdate": {
+                    "type": "centrality",
+                    "centralityType": specific_centrality_type
+                }
             }
-        }
+        # 具体的な要望がない場合は、中心性の概念と種類について説明
+        else:
+            return {
+                "success": True,
+                "content": "ネットワークの重要なノードを可視化するには、中心性指標が役立ちます。中心性とは、ネットワーク内でのノードの重要度を測る指標です。\n\n"
+                          "中心性には様々な種類があり、ネットワークの特徴や分析目的によって最適な指標が異なります。主な中心性指標は以下の通りです：\n\n"
+                          "1. **次数中心性（Degree Centrality）**: 多くのノードと直接つながっているノードを重要とみなします。SNSで友達が多い人や、交通網で多くの路線が通る駅などが該当します。\n\n"
+                          "2. **近接中心性（Closeness Centrality）**: ネットワーク全体の中心に位置し、他のノードへの距離が近いノードを重要とみなします。情報が速く広がる位置にあるノードなどが該当します。\n\n"
+                          "3. **媒介中心性（Betweenness Centrality）**: 異なるグループを「橋渡し」するノードを重要とみなします。情報や物資の流れを制御できる位置にあるノードが該当します。\n\n"
+                          "4. **固有ベクトル中心性（Eigenvector Centrality）**: 重要なノードとつながっているノードほど重要とみなします。「重要な人とつながりのある人」が重要という考え方です。\n\n"
+                          "5. **PageRank**: Googleの検索エンジンで使われる指標で、多くの重要なノードから参照されているノードを重要とみなします。\n\n"
+                          "どのような重要性を可視化したいですか？例えば：\n"
+                          "- 「接続数が多いノードを大きく表示したい」\n"
+                          "- 「他のノードに最短の距離で行けるノードを大きくしたい」\n"
+                          "- 「コミュニティ間の橋渡し役となるノードを強調したい」\n"
+                          "- 「影響力のあるノードとつながっているノードを大きく表示したい」\n"
+                          "などと具体的に教えていただければ、最適な中心性指標を提案できます。",
+                "general_info": True
+            }
     
     # 中心性に関する説明を求められた場合
     if "中心性について" in message or "中心性とは" in message or "中心性の種類" in message:
