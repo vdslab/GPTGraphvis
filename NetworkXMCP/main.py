@@ -526,14 +526,20 @@ async def get_network_info_tool():
     try:
         G = network_state["graph"]
         if not G:
+            # ネットワークがない場合は特別なレスポンスを返す
             return {
-                "success": False,
-                "error": "No network data available"
+                "success": True,
+                "network_info": {
+                    "has_network": False,
+                    "current_layout": network_state["layout"],
+                    "current_centrality": network_state["centrality"]
+                }
             }
         
         result = get_network_info(G)
         
-        # Add current layout and centrality
+        # Add current layout and centrality and has_network flag
+        result["network_info"]["has_network"] = True
         result["network_info"]["current_layout"] = network_state["layout"]
         result["network_info"]["current_centrality"] = network_state["centrality"]
         
@@ -983,8 +989,34 @@ async def mcp_get_network_info(request: Request):
         # Call the handler function
         result = await get_network_info_tool()
         
-        # Return response
-        return result
+        # レスポンスが正しい形式かどうか検証
+        if result and result.get("success") and "network_info" not in result:
+            # レスポンスにnetwork_infoキーがない場合、適切な形式で返す
+            if result.get("error"):
+                # エラーがある場合
+                return {
+                    "result": {
+                        "success": False,
+                        "error": result.get("error")
+                    }
+                }
+            else:
+                # エラーがない場合（この状況は通常発生しない）
+                return {
+                    "result": {
+                        "success": True,
+                        "network_info": {
+                            "has_network": False,
+                            "current_layout": network_state["layout"],
+                            "current_centrality": network_state["centrality"]
+                        }
+                    }
+                }
+        
+        # 通常のレスポンス
+        return {
+            "result": result
+        }
     except Exception as e:
         return {
             "success": False,

@@ -34,13 +34,74 @@ const NetworkChatPage = () => {
       try {
         const info = await getNetworkInfo();
         if (info && info.success) {
-          setNetworkState((prevState) => ({
-            ...prevState,
-            centrality: info.network_info.current_centrality,
-          }));
+          // ネットワークがあるかどうかチェック
+          if (info.network_info.has_network) {
+            // 通常の処理：中心性情報を更新
+            setNetworkState((prevState) => ({
+              ...prevState,
+              centrality: info.network_info.current_centrality,
+            }));
+          } else {
+            // ネットワークがない場合：サンプルネットワークを生成
+            console.log("ネットワークが存在しません。サンプルネットワークを生成します。");
+            const result = await mcpClient.getSampleNetwork();
+            if (result && result.success) {
+              // サンプルネットワークの状態を設定
+              useNetworkStore.setState({
+                positions: result.nodes.map((node) => ({
+                  id: node.id,
+                  label: node.label || node.id,
+                  x: node.x || 0,
+                  y: node.y || 0,
+                  size: node.size || 5,
+                  color: node.color || "#1d4ed8",
+                })),
+                edges: result.edges.map((edge) => ({
+                  source: edge.source,
+                  target: edge.target,
+                  width: edge.width || 1,
+                  color: edge.color || "#94a3b8",
+                })),
+                layout: result.layout || "spring",
+                layoutParams: result.layout_params || {},
+                error: null, // エラーをクリア
+              });
+            }
+          }
+        } else if (info && info.error) {
+          // API からのエラーレスポンス
+          console.error("Network info API error:", info.error);
         }
       } catch (error) {
         console.error("Error fetching network info:", error);
+        // エラー発生時もサンプルネットワークを試みる
+        try {
+          console.log("エラーが発生したため、サンプルネットワークを生成します。");
+          const result = await mcpClient.getSampleNetwork();
+          if (result && result.success) {
+            useNetworkStore.setState({
+              positions: result.nodes.map((node) => ({
+                id: node.id,
+                label: node.label || node.id,
+                x: node.x || 0,
+                y: node.y || 0,
+                size: node.size || 5,
+                color: node.color || "#1d4ed8",
+              })),
+              edges: result.edges.map((edge) => ({
+                source: edge.source,
+                target: edge.target,
+                width: edge.width || 1,
+                color: edge.color || "#94a3b8",
+              })),
+              layout: result.layout || "spring",
+              layoutParams: result.layout_params || {},
+              error: null, // エラーをクリア
+            });
+          }
+        } catch (fallbackError) {
+          console.error("Failed to generate sample network:", fallbackError);
+        }
       }
     };
 
