@@ -420,10 +420,13 @@ def convert_to_standard_graphml(graphml_content: str) -> Dict[str, Any]:
     Returns:
         Dictionary with standardized GraphML content and parsed graph
     """
+    print("--- Entering convert_to_standard_graphml ---")
     try:
+        print("Attempting to parse GraphML content...")
         # Parse the GraphML content
         content_io = io.BytesIO(graphml_content.encode('utf-8'))
         G = nx.read_graphml(content_io)
+        print("Successfully parsed GraphML content into a NetworkX graph.")
         
         # 既存の属性を確認し、標準属性名へのマッピングを検出
         attribute_mapping = {
@@ -509,6 +512,10 @@ def convert_to_standard_graphml(graphml_content: str) -> Dict[str, Any]:
             "graphml_content": standardized_graphml
         }
     except Exception as e:
+        print(f"--- ERROR in convert_to_standard_graphml ---")
+        print(f"Error details: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return {
             "success": False,
             "error": f"Error converting GraphML: {str(e)}"

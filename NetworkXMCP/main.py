@@ -538,6 +538,7 @@ async def api_import_graphml(params: ImportGraphMLParams, token: str = Depends(v
             state.graph = result["graph"]
             state.positions = result["nodes"]
             state.edges = result["edges"]
+            del result["graph"]
         
         return {"result": result}
     except Exception as e:
@@ -549,6 +550,8 @@ async def api_import_graphml(params: ImportGraphMLParams, token: str = Depends(v
 async def api_convert_graphml(params: ConvertGraphMLParams, token: str = Depends(verify_token)):
     try:
         result = convert_to_standard_graphml(params.graphml_content)
+        if "graph" in result:
+            del result["graph"]
         return {"result": result}
     except Exception as e:
         logger.error(f"Error converting GraphML: {e}")
