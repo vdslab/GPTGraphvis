@@ -684,22 +684,42 @@ class MCPClient {
                 if (importResult && importResult.success) {
                   console.log("Successfully imported updated GraphML");
                   
-                  // 中心性タイプを取得
-                  let centralityType = "degree"; // デフォルト
+                  // 中心性に関する推奨がある場合は、ユーザーに選択を促す
                   if (result.recommended_centrality) {
-                    centralityType = result.recommended_centrality;
-                  } else if (result.centrality_type) {
-                    centralityType = result.centrality_type;
+                    console.log("Centrality recommendation received:", result.recommended_centrality);
+                    return {
+                      success: true,
+                      content: result.content || "ネットワークの分析に基づいて中心性指標を推奨します。",
+                      recommended_centrality: result.recommended_centrality,
+                      // networkUpdateは含めない - ユーザーの確認を待つ
+                    };
                   }
                   
-                  // レスポンスを返す
+                  // 中心性タイプが指定されていて、かつapply_centralityフラグがtrueの場合のみ適用
+                  if ((result.centrality_type || result.recommended_centrality) && result.apply_centrality) {
+                    let centralityType = "degree"; // デフォルト
+                    if (result.recommended_centrality) {
+                      centralityType = result.recommended_centrality;
+                    } else if (result.centrality_type) {
+                      centralityType = result.centrality_type;
+                    }
+                    
+                    // 中心性を適用するレスポンスを返す
+                    return {
+                      success: true,
+                      content: result.content || "中心性に基づいてノードのサイズが更新されました。",
+                      networkUpdate: {
+                        type: "centrality",
+                        centralityType: centralityType
+                      }
+                    };
+                  }
+                  
+                  // それ以外の場合は、通常のレスポンスを返す
                   return {
                     success: true,
-                    content: result.content || "中心性に基づいてノードのサイズが更新されました。",
-                    networkUpdate: {
-                      type: "centrality",
-                      centralityType: centralityType
-                    }
+                    content: result.content || "GraphMLが正常に処理されました。",
+                    // networkUpdateは含めない
                   };
                 }
               }
