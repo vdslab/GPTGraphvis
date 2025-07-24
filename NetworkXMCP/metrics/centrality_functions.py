@@ -55,13 +55,49 @@ def calculate_centrality(G: nx.Graph, centrality_type: str, **kwargs) -> Dict[An
     # Use the specified centrality function
     if centrality_type in centrality_functions:
         try:
+            # グラフが有効かチェック
+            if G is None or G.number_of_nodes() == 0:
+                print("Warning: Empty graph or no graph provided for centrality calculation")
+                return {}
+                
+            # 特定の中心性指標のための前処理と特別処理
+            if centrality_type == "closeness" and not nx.is_connected(G):
+                # 非連結グラフの場合、各連結成分ごとに計算
+                print("Graph is not connected, calculating closeness centrality for each component")
+                centrality = {}
+                for component in nx.connected_components(G):
+                    subgraph = G.subgraph(component)
+                    comp_centrality = nx.closeness_centrality(subgraph, **kwargs)
+                    centrality.update(comp_centrality)
+                return centrality
+            
+            elif centrality_type == "eigenvector":
+                try:
+                    # まず標準のeigenvector_centralityを試す（より高速）
+                    return nx.eigenvector_centrality(G, max_iter=1000, **kwargs)
+                except (nx.PowerIterationFailedConvergence, ValueError) as e:
+                    # 収束しない場合はNumPy版を使用（より安定）
+                    print(f"Standard eigenvector centrality failed: {e}. Using NumPy implementation.")
+                    return nx.eigenvector_centrality_numpy(G, **kwargs)
+            
+            # 通常の中心性計算
             return centrality_functions[centrality_type](G, **kwargs)
+        
         except Exception as e:
-            # Fallback to degree centrality if the specified centrality fails
-            print(f"Error calculating {centrality_type} centrality: {str(e)}")
-            return nx.degree_centrality(G)
+            # エラーのタイプを詳細に出力
+            print(f"Error calculating {centrality_type} centrality: {type(e).__name__}: {str(e)}")
+            
+            # 次数中心性にフォールバック
+            try:
+                print(f"Falling back to degree centrality")
+                return nx.degree_centrality(G)
+            except Exception as fallback_error:
+                # すべての中心性計算が失敗した場合は空の辞書を返す
+                print(f"Fallback to degree centrality also failed: {str(fallback_error)}")
+                return {node: 0.0 for node in G.nodes()}
     else:
-        # Default to degree centrality
+        # サポートされていない中心性タイプの場合は次数中心性を使用
+        print(f"Unsupported centrality type: {centrality_type}, using degree centrality instead")
         return nx.degree_centrality(G)
 
 def normalize_centrality_values(centrality_values: Dict[Any, float]) -> Dict[Any, float]:
