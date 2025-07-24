@@ -644,7 +644,28 @@ class MCPClient {
           console.log("Detected centrality query, trying GraphML-based processing");
           
           // 現在のネットワークをGraphMLとしてエクスポート
-          const exportResult = await this.exportNetworkAsGraphML();
+          let exportResult;
+          try {
+            exportResult = await this.exportNetworkAsGraphML();
+          } catch (exportError) {
+            console.warn("Failed to export network as GraphML:", exportError);
+            console.log("Attempting to load sample network before processing centrality query");
+            
+            // サンプルネットワークを読み込む
+            try {
+              const sampleNetwork = await this.getSampleNetwork();
+              if (sampleNetwork && sampleNetwork.success) {
+                console.log("Successfully loaded sample network for centrality processing");
+                // サンプルネットワークを読み込んだ後、再度エクスポートを試みる
+                exportResult = await this.exportNetworkAsGraphML();
+              } else {
+                throw new Error("Failed to load sample network");
+              }
+            } catch (sampleError) {
+              console.error("Failed to load sample network:", sampleError);
+              throw new Error("No network available for centrality calculation");
+            }
+          }
           
           if (exportResult && exportResult.success && exportResult.content) {
             console.log("Successfully exported network as GraphML for chat processing");

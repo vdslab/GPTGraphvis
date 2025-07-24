@@ -47,9 +47,26 @@ const useNetworkStore = create((set, get) => ({
   calculateLayout: async () => {
     const { nodes, layout, layoutParams } = get();
 
+    // ノードが存在しない場合、サンプルネットワークを自動的に読み込む
     if (!nodes.length) {
-      set({ error: "No nodes provided", isLoading: false });
-      return false;
+      console.log("No nodes found, loading sample network before calculating layout");
+      try {
+        const sampleLoaded = await get().loadSampleNetwork();
+        if (!sampleLoaded) {
+          set({ error: "Failed to load sample network", isLoading: false });
+          return false;
+        }
+        // サンプルネットワークが読み込まれたので、ノードリストを更新
+        const updatedNodes = get().nodes;
+        if (!updatedNodes.length) {
+          set({ error: "Sample network has no nodes", isLoading: false });
+          return false;
+        }
+      } catch (sampleError) {
+        console.error("Error loading sample network:", sampleError);
+        set({ error: "Failed to load sample network", isLoading: false });
+        return false;
+      }
     }
 
     set({ isLoading: true, error: null });
@@ -110,9 +127,26 @@ const useNetworkStore = create((set, get) => ({
   applyLayout: async () => {
     const { nodes, layout, layoutParams } = get();
 
+    // ノードが存在しない場合、サンプルネットワークを自動的に読み込む
     if (!nodes.length) {
-      set({ error: "No nodes provided", isLoading: false });
-      return false;
+      console.log("No nodes found, loading sample network before applying layout");
+      try {
+        const sampleLoaded = await get().loadSampleNetwork();
+        if (!sampleLoaded) {
+          set({ error: "Failed to load sample network", isLoading: false });
+          return false;
+        }
+        // サンプルネットワークが読み込まれたので、ノードリストを更新
+        const updatedNodes = get().nodes;
+        if (!updatedNodes.length) {
+          set({ error: "Sample network has no nodes", isLoading: false });
+          return false;
+        }
+      } catch (sampleError) {
+        console.error("Error loading sample network:", sampleError);
+        set({ error: "Failed to load sample network", isLoading: false });
+        return false;
+      }
     }
 
     set({ isLoading: true, error: null });
@@ -291,9 +325,26 @@ const useNetworkStore = create((set, get) => ({
   applyCentrality: async (centralityType) => {
     const { nodes } = get();
 
+    // ノードが存在しない場合、サンプルネットワークを自動的に読み込む
     if (!nodes.length) {
-      set({ error: "No nodes provided", isLoading: false });
-      return false;
+      console.log("No nodes found, loading sample network before applying centrality");
+      try {
+        const sampleLoaded = await get().loadSampleNetwork();
+        if (!sampleLoaded) {
+          set({ error: "Failed to load sample network", isLoading: false });
+          return false;
+        }
+        // サンプルネットワークが読み込まれたので、ノードリストを更新
+        const updatedNodes = get().nodes;
+        if (!updatedNodes.length) {
+          set({ error: "Sample network has no nodes", isLoading: false });
+          return false;
+        }
+      } catch (sampleError) {
+        console.error("Error loading sample network:", sampleError);
+        set({ error: "Failed to load sample network", isLoading: false });
+        return false;
+      }
     }
 
     set({ isLoading: true, error: null });
