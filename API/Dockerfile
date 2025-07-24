@@ -1,16 +1,20 @@
 FROM python:3.12-slim
 
+# 必要なパッケージのインストール
+RUN apt-get update && apt-get install -y curl build-essential libpq-dev gcc && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # uvのインストール（公式ドキュメント推奨方法）
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
-
-# アプリケーションをコンテナにコピー
-COPY . /app
 
 # 作業ディレクトリの設定
 WORKDIR /app
 
-# 依存関係をシステムレベルでインストール（仮想環境ではなく）
-RUN uv pip install --system -e .
+# pyproject.tomlをコンテナにコピー
+COPY ./pyproject.toml .
+
+# 依存関係のインストール
+RUN uv sync --no-cache
 
 # アプリケーションの実行
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

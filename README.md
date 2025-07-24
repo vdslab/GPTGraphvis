@@ -2,6 +2,15 @@
 
 グラフのレイアウト計算とユーザー認証機能を備えたWebアプリケーション
 
+## プロジェクト構成
+
+このプロジェクトは以下のコンポーネントで構成されています：
+
+- **frontend**: Reactフロントエンド
+- **API**: FastAPIバックエンド（認証、ChatGPT連携）
+- **NetworkXMCP**: NetworkXを使用したグラフ計算とMCPサーバー
+- **db**: PostgreSQLデータベース（ユーザー認証用）
+
 ## 機能
 
 - グラフのレイアウト計算（spring, circular, random, spectral）
@@ -85,6 +94,10 @@ curl -X POST "http://localhost:8000/chatgpt/generate" \
 - `POST /chatgpt/generate` - ChatGPT応答生成（認証必須）
 - `POST /chatgpt/recommend-layout` - ネットワーク特性に基づいた最適なレイアウトアルゴリズムの推薦（認証必須）
 - `POST /network/layout` - グラフレイアウト計算
+
+## NetworkXMCP
+
+NetworkXMCPは、NetworkXを使用したグラフ計算とMCPサーバーを提供するコンポーネントです。依存関係は`pyproject.toml`で管理されています。詳細は[NetworkXMCP/README.md](NetworkXMCP/README.md)を参照してください。
 
 ## サポートされているレイアウトアルゴリズム
 

@@ -1,0 +1,95 @@
+### ネットワークレイアウトAPIテスト
+
+### 認証トークンの取得
+# @name login
+POST http://localhost:8000/auth/token
+Content-Type: application/x-www-form-urlencoded
+
+username=testuser&password=testpassword
+
+### レスポンスからトークンを抽出
+@authToken = {{login.response.body.access_token}}
+
+### circularレイアウトの適用
+POST http://localhost:8000/network-layout/apply
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "nodes": [
+    {"id": "1", "label": "Node 1"},
+    {"id": "2", "label": "Node 2"},
+    {"id": "3", "label": "Node 3"},
+    {"id": "4", "label": "Node 4"},
+    {"id": "5", "label": "Node 5"}
+  ],
+  "edges": [
+    {"source": "1", "target": "2"},
+    {"source": "1", "target": "3"},
+    {"source": "2", "target": "3"},
+    {"source": "3", "target": "4"},
+    {"source": "4", "target": "5"},
+    {"source": "5", "target": "1"}
+  ],
+  "layout": "circular",
+  "layout_params": {
+    "scale": 1.5,
+    "center": [0, 0]
+  }
+}
+
+### springレイアウトの適用
+POST http://localhost:8000/network-layout/apply
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "nodes": [
+    {"id": "1", "label": "Node 1"},
+    {"id": "2", "label": "Node 2"},
+    {"id": "3", "label": "Node 3"},
+    {"id": "4", "label": "Node 4"},
+    {"id": "5", "label": "Node 5"}
+  ],
+  "edges": [
+    {"source": "1", "target": "2"},
+    {"source": "1", "target": "3"},
+    {"source": "2", "target": "3"},
+    {"source": "3", "target": "4"},
+    {"source": "4", "target": "5"},
+    {"source": "5", "target": "1"}
+  ],
+  "layout": "spring",
+  "layout_params": {
+    "k": 0.3,
+    "iterations": 100
+  }
+}
+
+### fruchterman_reingoldレイアウトの適用
+POST http://localhost:8000/network-layout/apply
+Content-Type: application/json
+Authorization: Bearer {{authToken}}
+
+{
+  "nodes": [
+    {"id": "1", "label": "Node 1"},
+    {"id": "2", "label": "Node 2"},
+    {"id": "3", "label": "Node 3"},
+    {"id": "4", "label": "Node 4"},
+    {"id": "5", "label": "Node 5"}
+  ],
+  "edges": [
+    {"source": "1", "target": "2"},
+    {"source": "1", "target": "3"},
+    {"source": "2", "target": "3"},
+    {"source": "3", "target": "4"},
+    {"source": "4", "target": "5"},
+    {"source": "5", "target": "1"}
+  ],
+  "layout": "fruchterman_reingold",
+  "layout_params": {
+    "k": 0.5,
+    "iterations": 50
+  }
+}

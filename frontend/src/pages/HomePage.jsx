@@ -12,16 +12,16 @@ const HomePage = () => {
             Network Visualization API
           </h1>
           <p className="mt-5 max-w-xl mx-auto text-xl text-gray-500">
-            Visualize network data with various layout algorithms and get recommendations for the best layout.
+            Visualize network data with various layout algorithms and interact through a chat interface to analyze your networks.
           </p>
           <div className="mt-8 flex justify-center">
             {isAuthenticated ? (
               <div className="inline-flex rounded-md shadow">
                 <Link
-                  to="/dashboard"
+                  to="/chat"
                   className="inline-flex items-center justify-center px-5 py-3 border border-transparent text-base font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
                 >
-                  Go to Dashboard
+                  Go to Network Chat
                 </Link>
               </div>
             ) : (
@@ -38,30 +38,21 @@ const HomePage = () => {
         </div>
 
         <div className="mt-16">
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <div className="bg-gray-50 p-6 rounded-lg shadow-md">
               <div className="text-center">
-                <h3 className="text-lg font-medium text-gray-900">Network Visualization</h3>
+                <h3 className="text-lg font-medium text-gray-900">Network Chat</h3>
                 <p className="mt-2 text-base text-gray-500">
-                  Visualize your network data using various layout algorithms from NetworkX.
+                  Interact with your network through a chat interface to modify layouts and analyze properties.
                 </p>
               </div>
             </div>
 
             <div className="bg-gray-50 p-6 rounded-lg shadow-md">
               <div className="text-center">
-                <h3 className="text-lg font-medium text-gray-900">Layout Recommendation</h3>
+                <h3 className="text-lg font-medium text-gray-900">MCP Integration</h3>
                 <p className="mt-2 text-base text-gray-500">
-                  Get recommendations for the best layout algorithm based on your network characteristics.
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-gray-50 p-6 rounded-lg shadow-md">
-              <div className="text-center">
-                <h3 className="text-lg font-medium text-gray-900">ChatGPT Integration</h3>
-                <p className="mt-2 text-base text-gray-500">
-                  Leverage ChatGPT to get insights and recommendations for your network data.
+                  Leverage Model Context Protocol (MCP) for enhanced network visualization and analysis capabilities.
                 </p>
               </div>
             </div>

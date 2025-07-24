@@ -16,7 +16,7 @@ const RegisterPage = () => {
     const success = await registerUser(data.username, data.password);
     
     if (success) {
-      navigate('/dashboard', { replace: true });
+      navigate('/chat', { replace: true });
     } else {
       setRegisterError('Registration failed. Please try again.');
     }
