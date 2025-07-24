@@ -441,17 +441,45 @@ async def health_check():
 def create_sample_network():
     try:
         logger.info("ネットワークが存在しません。サンプルネットワークを生成します。")
-        # スター型のサンプルネットワークを作成
-        G = nx.star_graph(10)
+        
+        # ノード数とエッジ確率をランダムに設定
+        num_nodes = random.randint(18, 25)  # 18〜25のランダムなノード数
+        edge_probability = random.uniform(0.15, 0.25)  # 15%〜25%のランダムな確率
+        
+        # ランダムグラフを生成
+        G = nx.gnp_random_graph(num_nodes, edge_probability)
+        
+        # 連結グラフを確保（孤立ノードがないようにする）
+        if not nx.is_connected(G):
+            # 連結成分を取得
+            components = list(nx.connected_components(G))
+            # 最大の連結成分以外の各成分から、最大成分へエッジを追加
+            largest_component = max(components, key=len)
+            for component in components:
+                if component != largest_component:
+                    # 各成分から最大成分へのエッジを追加
+                    node_from = random.choice(list(component))
+                    node_to = random.choice(list(largest_component))
+                    G.add_edge(node_from, node_to)
         
         # ノードとエッジの情報を抽出
         nodes = []
         for node in G.nodes():
+            # ノードごとに少し異なるサイズと色の変化をつける
+            size_variation = random.uniform(4.5, 5.5)
+            color_variation = random.randint(-15, 15)
+            base_color = [29, 78, 216]  # #1d4ed8のRGB値
+            
+            # 色の変化を適用（範囲内に収める）
+            r = max(0, min(255, base_color[0] + color_variation))
+            g = max(0, min(255, base_color[1] + color_variation))
+            b = max(0, min(255, base_color[2] + color_variation))
+            
             nodes.append({
                 "id": str(node),
                 "label": f"Node {node}",
-                "size": 5 if node != 0 else 10,
-                "color": "#1d4ed8"
+                "size": size_variation,
+                "color": f"rgb({r}, {g}, {b})"
             })
         
         edges = []
