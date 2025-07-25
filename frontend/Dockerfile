@@ -2,26 +2,28 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Copy package.json and package-lock.json if available
+# Copy package.json and package-lock.json
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci --only=production=false
+RUN npm ci
+# Explicitly install react-force-graph-2d to ensure it's available
+RUN npm install react-force-graph-2d@1.27.1
 
 # Copy the rest of the application
 COPY . .
 
-# Clean any previous build artifacts
-RUN rm -rf build
-
-# Generate React Router types only
-RUN npx react-router typegen
-
-# Build the application with fresh cache
+# Build the application
 RUN npm run build
+
+# Install a simple http server to serve the static content
+RUN npm install -g serve
+
+# Copy serve.json configuration for API proxying
+COPY serve.json ./dist/
 
 # Expose the port the app will run on
 EXPOSE 3000
 
-# Command to run the application using React Router's built-in server
-CMD ["npm", "start"]
+# Command to run the application
+CMD ["serve", "-s", "dist", "-l", "3000"]
