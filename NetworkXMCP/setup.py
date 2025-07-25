@@ -1,21 +1,19 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="networkxmcp",
-    version="1.0.0",
-    description="NetworkX MCP Server for network visualization and analysis",
-    packages=["layouts", "metrics", "tools"],
-    python_requires=">=3.12",
+    name="networkx-mcp",
+    version="0.1.0",
+    packages=find_packages(),
     install_requires=[
-        "fastapi>=0.95.0",
-        "uvicorn>=0.21.1",
-        "networkx>=3.0",
-        "numpy>=1.24.0",
-        "pydantic>=2.0.0",
-        "python-dotenv>=1.0.0",
-        "matplotlib>=3.7.0",
-        "scikit-learn>=1.2.0",
-        "python-louvain>=0.16",
-        "fastapi-mcp==0.3.7"
+        "fastapi>=0.103.1",
+        "uvicorn>=0.23.2",
+        "networkx>=3.1",
+        "numpy>=1.25.2",
+        "matplotlib>=3.7.2",
+        "pydantic>=2.3.0",
+        "python-multipart>=0.0.6",
+        "requests>=2.31.0",
     ],
+    description="NetworkX MCP Server for graph analysis and visualization",
+    author="NetworkX MCP Team",
 )

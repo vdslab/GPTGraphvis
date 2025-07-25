@@ -416,22 +416,6 @@ def process_chat_message(message, graphml_content=None):
             "graphml_content": graphml_content
         }
 
-# 認証機能（JWT検証）
-async def verify_token(authorization: str = Header(None)):
-    if authorization is None:
-        return None
-    
-    try:
-        if authorization.startswith("Bearer "):
-            token = authorization.replace("Bearer ", "")
-            # 実際のプロジェクトでは適切なJWT検証を行う
-            # この例では単純に受け入れる
-            return token
-    except Exception as e:
-        logger.error(f"Token verification error: {e}")
-    
-    return None
-
 # ヘルスチェックエンドポイント
 @app.get("/health")
 async def health_check():
@@ -524,7 +508,7 @@ def create_sample_network():
 
 # サンプルネットワーク取得エンドポイント
 @app.get("/get_sample_network")
-async def get_sample_network(token: str = Depends(verify_token)):
+async def get_sample_network():
     if state.graph is None:
         return create_sample_network()
     else:
@@ -538,7 +522,7 @@ async def get_sample_network(token: str = Depends(verify_token)):
 
 # GraphML形式のエクスポートエンドポイント
 @app.post("/tools/export_graphml")
-async def api_export_graphml(params: ExportGraphMLParams = Body(ExportGraphMLParams()), token: str = Depends(verify_token)):
+async def api_export_graphml(params: ExportGraphMLParams = Body(ExportGraphMLParams())):
     try:
         if state.graph is None:
             return {"result": {"success": False, "error": "No network loaded"}}
@@ -551,7 +535,7 @@ async def api_export_graphml(params: ExportGraphMLParams = Body(ExportGraphMLPar
 
 # GraphML形式のインポートエンドポイント
 @app.post("/tools/import_graphml")
-async def api_import_graphml(params: ImportGraphMLParams, token: str = Depends(verify_token)):
+async def api_import_graphml(params: ImportGraphMLParams):
     try:
         # 標準化されたGraphMLに変換
         conversion_result = convert_to_standard_graphml(params.graphml_content)
@@ -575,7 +559,7 @@ async def api_import_graphml(params: ImportGraphMLParams, token: str = Depends(v
 
 # GraphML形式の変換エンドポイント
 @app.post("/tools/convert_graphml")
-async def api_convert_graphml(params: ConvertGraphMLParams, token: str = Depends(verify_token)):
+async def api_convert_graphml(params: ConvertGraphMLParams):
     try:
         result = convert_to_standard_graphml(params.graphml_content)
         if "graph" in result:
@@ -587,7 +571,7 @@ async def api_convert_graphml(params: ConvertGraphMLParams, token: str = Depends
 
 # チャットメッセージ処理エンドポイント
 @app.post("/tools/process_chat_message")
-async def api_process_chat_message(params: ChatMessageParams, token: str = Depends(verify_token)):
+async def api_process_chat_message(params: ChatMessageParams):
     try:
         # 現在のネットワーク情報を取得（GraphMLがない場合）
         if params.graphml_content is None and state.graph is not None:
@@ -616,7 +600,7 @@ async def api_process_chat_message(params: ChatMessageParams, token: str = Depen
 
 # GraphMLチャットエンドポイント
 @app.post("/tools/graphml_chat")
-async def api_graphml_chat(params: ChatMessageParams, token: str = Depends(verify_token)):
+async def api_graphml_chat(params: ChatMessageParams):
     try:
         # GraphMLコンテンツが提供されているかチェック
         if not params.graphml_content:
@@ -631,7 +615,7 @@ async def api_graphml_chat(params: ChatMessageParams, token: str = Depends(verif
 
 # レイアウト変更エンドポイント
 @app.post("/tools/change_layout")
-async def api_change_layout(params: dict = Body(...), token: str = Depends(verify_token)):
+async def api_change_layout(params: dict = Body(...)):
     try:
         if state.graph is None:
             return {"result": {"success": False, "error": "No network loaded"}}
@@ -668,7 +652,7 @@ async def api_change_layout(params: dict = Body(...), token: str = Depends(verif
 
 # 中心性計算エンドポイント
 @app.post("/tools/calculate_centrality")
-async def api_calculate_centrality(params: dict = Body(...), token: str = Depends(verify_token)):
+async def api_calculate_centrality(params: dict = Body(...)):
     try:
         if state.graph is None:
             return {"result": {"success": False, "error": "No network loaded"}}
@@ -706,6 +690,51 @@ async def api_calculate_centrality(params: dict = Body(...), token: str = Depend
     except Exception as e:
         logger.error(f"Error calculating centrality: {e}")
         return {"result": {"success": False, "error": f"Error calculating centrality: {str(e)}"}}
+
+# MCP情報エンドポイント
+@app.get("/info")
+async def get_mcp_info():
+    """MCPサーバーの情報を返す"""
+    return {
+        "success": True,
+        "name": "NetworkX MCP",
+        "version": "0.1.0",
+        "description": "NetworkX graph analysis and visualization MCP server",
+        "tools": [
+            {
+                "name": "get_sample_network",
+                "description": "Get a sample network"
+            },
+            {
+                "name": "export_graphml",
+                "description": "Export the current network as GraphML"
+            },
+            {
+                "name": "import_graphml",
+                "description": "Import a network from GraphML"
+            },
+            {
+                "name": "convert_graphml",
+                "description": "Convert GraphML to a standardized format"
+            },
+            {
+                "name": "process_chat_message",
+                "description": "Process a chat message and perform network operations"
+            },
+            {
+                "name": "graphml_chat",
+                "description": "Process a chat message with GraphML content"
+            },
+            {
+                "name": "change_layout",
+                "description": "Change the layout algorithm for the network"
+            },
+            {
+                "name": "calculate_centrality",
+                "description": "Calculate centrality metrics for the network"
+            }
+        ]
+    }
 
 if __name__ == "__main__":
     import uvicorn

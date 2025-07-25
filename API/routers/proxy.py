@@ -1,126 +1,120 @@
 """
-Proxy router for forwarding requests to the NetworkX MCP server.
+プロキシルーター
+=============
+
+NetworkX MCPサーバーへのリクエストをプロキシするルーター
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
-import httpx
-from typing import Dict, Any, Optional
 import os
-
-import models
+import requests
+import json
+import logging
+from fastapi import APIRouter, HTTPException, Depends, Request, Body
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+from typing import Dict, List, Optional, Any, Union
 import auth
 
-# NetworkX MCP server URL
-NETWORKX_MCP_URL = "http://networkx-mcp:8001"
+# ロギングの設定
+logger = logging.getLogger("api.routers.proxy")
 
+# ルーターの作成
 router = APIRouter(
-    prefix="/proxy/networkx",
+    prefix="/proxy",
     tags=["proxy"],
-    responses={401: {"description": "Unauthorized"}},
+    dependencies=[Depends(auth.get_current_user)],
+    responses={404: {"description": "Not found"}},
 )
 
-@router.post("/tools/{tool_name}")
-async def proxy_tool(
-    tool_name: str,
-    request: Request,
-    current_user: models.User = Depends(auth.get_current_active_user)
-):
-    """
-    Proxy a tool request to the NetworkX MCP server.
-    """
-    try:
-        # Get request body
-        body = await request.json()
-        
-        # Format request for the NetworkX MCP server
-        mcp_request = body.get("arguments", {})
-        
-        # Forward request to NetworkX MCP server
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{NETWORKX_MCP_URL}/tools/{tool_name}",
-                json=mcp_request,
-                timeout=30.0
-            )
-            
-            # Return response from NetworkX MCP server
-            return JSONResponse(
-                content=response.json(),
-                status_code=response.status_code
-            )
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Error connecting to NetworkX MCP server: {str(e)}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error proxying request: {str(e)}"
-        )
+# NetworkX MCPサーバーのURL
+NETWORKX_MCP_URL = os.environ.get("NETWORKX_MCP_URL", "http://networkx-mcp:8001")
 
-@router.get("/resources/{resource_name}")
-async def proxy_resource(
-    resource_name: str,
-    request: Request,
-    current_user: models.User = Depends(auth.get_current_active_user)
-):
-    """
-    Proxy a resource request to the NetworkX MCP server.
-    """
-    try:
-        # Forward request to NetworkX MCP server
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{NETWORKX_MCP_URL}/resources/{resource_name}",
-                params=request.query_params,
-                timeout=30.0
-            )
-            
-            # Return response from NetworkX MCP server
-            return JSONResponse(
-                content=response.json(),
-                status_code=response.status_code
-            )
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Error connecting to NetworkX MCP server: {str(e)}"
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error proxying request: {str(e)}"
-        )
+# リクエストモデル
+class ProxyRequest(BaseModel):
+    arguments: Dict[str, Any]
 
-@router.get("/manifest")
-async def proxy_manifest(
-    current_user: models.User = Depends(auth.get_current_active_user)
-):
+# NetworkX MCPサーバーにリクエストを転送する関数
+def forward_to_networkx_mcp(endpoint: str, data: Dict[str, Any] = None) -> Dict[str, Any]:
     """
-    Proxy a manifest request to the NetworkX MCP server.
+    NetworkX MCPサーバーにリクエストを転送する
+    
+    Args:
+        endpoint: APIエンドポイント
+        data: リクエストデータ
+        
+    Returns:
+        レスポンスデータ
+    """
+    url = f"{NETWORKX_MCP_URL}/{endpoint}"
+    
+    try:
+        if data:
+            # POSTリクエスト
+            response = requests.post(url, json=data)
+        else:
+            # GETリクエスト
+            response = requests.get(url)
+        
+        # レスポンスのステータスコードをチェック
+        response.raise_for_status()
+        
+        # JSONレスポンスを返す
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error forwarding request to NetworkX MCP: {e}")
+        raise HTTPException(status_code=500, detail=f"Error communicating with NetworkX MCP: {str(e)}")
+
+# NetworkX MCPサーバーの情報を取得するエンドポイント
+@router.get("/networkx/info")
+async def get_networkx_info():
+    """
+    NetworkX MCPサーバーの情報を取得する
     """
     try:
-        # Forward request to NetworkX MCP server
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{NETWORKX_MCP_URL}/manifest",
-                timeout=30.0
-            )
-            
-            # Return response from NetworkX MCP server
-            return JSONResponse(
-                content=response.json(),
-                status_code=response.status_code
-            )
-    except httpx.RequestError as e:
-        raise HTTPException(
-            status_code=503,
-            detail=f"Error connecting to NetworkX MCP server: {str(e)}"
-        )
+        return forward_to_networkx_mcp("info")
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error proxying request: {str(e)}"
-        )
+        logger.error(f"Error getting NetworkX MCP info: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting NetworkX MCP info: {str(e)}")
+
+# NetworkX MCPサーバーのヘルスチェックエンドポイント
+@router.get("/networkx/health")
+async def check_networkx_health():
+    """
+    NetworkX MCPサーバーのヘルスチェック
+    """
+    try:
+        return forward_to_networkx_mcp("health")
+    except Exception as e:
+        logger.error(f"Error checking NetworkX MCP health: {e}")
+        raise HTTPException(status_code=500, detail=f"Error checking NetworkX MCP health: {str(e)}")
+
+# サンプルネットワークを取得するエンドポイント
+@router.get("/networkx/get_sample_network")
+async def get_sample_network():
+    """
+    サンプルネットワークを取得する
+    """
+    try:
+        return forward_to_networkx_mcp("get_sample_network")
+    except Exception as e:
+        logger.error(f"Error getting sample network: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting sample network: {str(e)}")
+
+# NetworkX MCPツールを使用するエンドポイント
+@router.post("/networkx/tools/{tool_name}")
+async def use_networkx_tool(tool_name: str, request: ProxyRequest):
+    """
+    NetworkX MCPツールを使用する
+    
+    Args:
+        tool_name: ツール名
+        request: リクエストデータ
+        
+    Returns:
+        ツールの実行結果
+    """
+    try:
+        return forward_to_networkx_mcp(f"tools/{tool_name}", request.arguments)
+    except Exception as e:
+        logger.error(f"Error using NetworkX MCP tool {tool_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error using NetworkX MCP tool {tool_name}: {str(e)}")

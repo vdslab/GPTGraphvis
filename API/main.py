@@ -1,6 +1,7 @@
 import os
 import time
-from fastapi import FastAPI, HTTPException, Request, Depends
+import logging
+from fastapi import FastAPI, HTTPException, Request, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
@@ -8,6 +9,7 @@ import networkx as nx
 import numpy as np
 from dotenv import load_dotenv
 import sqlalchemy.exc
+import json
 
 from database import engine, Base
 from routers import auth as auth_router
@@ -15,6 +17,7 @@ from routers import chat as chat_router
 from routers import proxy as proxy_router
 import auth
 import models
+import mcp_server
 
 # Load environment variables
 load_dotenv()
@@ -62,6 +65,10 @@ app.add_middleware(
 app.include_router(auth_router.router)
 app.include_router(chat_router.router)
 app.include_router(proxy_router.router)
+app.include_router(mcp_server.app, prefix="/mcp")
+
+# WebSocketマネージャーの取得
+ws_manager = mcp_server.manager
 
 @app.get("/")
 async def root():
@@ -82,3 +89,87 @@ async def health_check():
             return {"status": "healthy", "database": "connected"}
     except Exception as e:
         return {"status": "unhealthy", "database": str(e)}
+
+# WebSocketエンドポイント
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocketエンドポイント
+    クライアントからの接続を受け付け、メッセージの送受信を行う
+    """
+    # トークンの検証
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008, reason="Token is required")
+        return
+    
+    try:
+        # トークンの検証
+        user = auth.get_current_user_from_token(token)
+        if not user:
+            await websocket.close(code=1008, reason="Invalid token")
+            return
+        
+        # クライアントIDの生成
+        client_id = f"user_{user.id}_{time.time()}"
+        
+        # WebSocket接続の確立
+        await ws_manager.connect(websocket, client_id)
+        
+        # クライアントにウェルカムメッセージを送信
+        await ws_manager.send_message({
+            "type": "connection_established",
+            "message": f"Connected to Network Visualization API as {user.username}"
+        }, client_id)
+        
+        # メッセージの受信ループ
+        while True:
+            # メッセージを受信
+            data = await websocket.receive_text()
+            
+            try:
+                # JSONデータをパース
+                message = json.loads(data)
+                
+                # メッセージタイプに基づいて処理
+                if message.get("type") == "network_update":
+                    # ネットワーク更新メッセージを他のクライアントにブロードキャスト
+                    await ws_manager.broadcast({
+                        "type": "network_update",
+                        "data": message.get("data", {})
+                    })
+                elif message.get("type") == "chat_message":
+                    # チャットメッセージを他のクライアントにブロードキャスト
+                    await ws_manager.broadcast({
+                        "type": "chat_message",
+                        "data": message.get("data", {})
+                    })
+                else:
+                    # 不明なメッセージタイプ
+                    await ws_manager.send_message({
+                        "type": "error",
+                        "message": f"Unknown message type: {message.get('type')}"
+                    }, client_id)
+            except json.JSONDecodeError:
+                # JSONデコードエラー
+                await ws_manager.send_message({
+                    "type": "error",
+                    "message": "Invalid JSON data"
+                }, client_id)
+            except Exception as e:
+                # その他のエラー
+                logging.error(f"Error processing message: {e}")
+                await ws_manager.send_message({
+                    "type": "error",
+                    "message": f"Error processing message: {str(e)}"
+                }, client_id)
+    
+    except WebSocketDisconnect:
+        # クライアントが切断した場合
+        if 'client_id' in locals():
+            ws_manager.disconnect(client_id)
+    except Exception as e:
+        # その他のエラー
+        logging.error(f"WebSocket error: {e}")
+        if 'client_id' in locals():
+            ws_manager.disconnect(client_id)

@@ -4,16 +4,18 @@ version = "1.0.0"
 description = "NetworkX MCP Server for network visualization and analysis"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.95.0",
-    "uvicorn>=0.21.1",
-    "networkx>=3.0",
-    "numpy>=1.24.0",
-    "pydantic>=2.0.0",
+    "fastapi>=0.103.1",
+    "uvicorn>=0.23.2",
+    "networkx>=3.1",
+    "numpy>=1.25.2",
+    "pydantic>=2.3.0",
     "python-dotenv>=1.0.0",
-    "matplotlib>=3.7.0",
+    "matplotlib>=3.7.2",
     "scikit-learn>=1.2.0",
     "python-louvain>=0.16",
-    "fastapi-mcp==0.3.7"
+    "fastapi-mcp==0.3.7",
+    "python-multipart>=0.0.6",
+    "requests>=2.31.0"
 ]
 
 [tool.setuptools]

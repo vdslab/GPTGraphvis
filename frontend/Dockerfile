@@ -1,29 +1,22 @@
-FROM node:20-alpine
-
+FROM node:20-alpine AS development-dependencies-env
+COPY . /app
 WORKDIR /app
-
-# Copy package.json and package-lock.json
-COPY package*.json ./
-
-# Install dependencies
 RUN npm ci
-# Explicitly install react-force-graph-2d to ensure it's available
-RUN npm install react-force-graph-2d@1.27.1
 
-# Copy the rest of the application
-COPY . .
+FROM node:20-alpine AS production-dependencies-env
+COPY ./package.json package-lock.json /app/
+WORKDIR /app
+RUN npm ci --omit=dev
 
-# Build the application
+FROM node:20-alpine AS build-env
+COPY . /app/
+COPY --from=development-dependencies-env /app/node_modules /app/node_modules
+WORKDIR /app
 RUN npm run build
 
-# Install a simple http server to serve the static content
-RUN npm install -g serve
-
-# Copy serve.json configuration for API proxying
-COPY serve.json ./dist/
-
-# Expose the port the app will run on
-EXPOSE 3000
-
-# Command to run the application
-CMD ["serve", "-s", "dist", "-l", "3000"]
+FROM node:20-alpine
+COPY ./package.json package-lock.json /app/
+COPY --from=production-dependencies-env /app/node_modules /app/node_modules
+COPY --from=build-env /app/build /app/build
+WORKDIR /app
+CMD ["npm", "run", "start"]
