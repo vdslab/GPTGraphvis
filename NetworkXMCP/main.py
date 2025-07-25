@@ -66,18 +66,11 @@ app.add_middleware(
 )
 
 # リクエストモデル
-class ChatMessageParams(BaseModel):
-    message: str = Field(..., description="Chat message to process")
-    graphml_content: Optional[str] = Field(None, description="GraphML content (optional)")
-
 class ExportGraphMLParams(BaseModel):
     format: str = Field("graphml", description="Format to export the network as")
 
 class ImportGraphMLParams(BaseModel):
     graphml_content: str = Field(..., description="GraphML content to import")
-
-class ConvertGraphMLParams(BaseModel):
-    graphml_content: str = Field(..., description="GraphML content to convert")
 
 # 基本的なヘルパー関数
 
@@ -369,52 +362,6 @@ def parse_graphml_string(graphml_content):
             "error": f"Error parsing GraphML string: {str(e)}"
         }
 
-def process_chat_message(message, graphml_content=None):
-    """チャットメッセージを処理してGraphML対応の応答を返す"""
-    try:
-        from tools.centrality_chat import process_chat_message as chat_processor
-        
-        # GraphMLコンテンツが提供されている場合、その内容からネットワーク情報を抽出
-        network_info = None
-        if graphml_content is not None:
-            try:
-                # GraphMLからグラフを生成して基本的な情報を計算
-                import io
-                import networkx as nx
-                content_io = io.BytesIO(graphml_content.encode('utf-8'))
-                G = nx.read_graphml(content_io)
-                
-                network_info = {
-                    "num_nodes": G.number_of_nodes(),
-                    "num_edges": G.number_of_edges(),
-                    "density": nx.density(G),
-                    "is_connected": nx.is_connected(G),
-                    "num_components": nx.number_connected_components(G),
-                    "avg_degree": sum(dict(G.degree()).values()) / G.number_of_nodes(),
-                    "clustering_coefficient": nx.average_clustering(G)
-                }
-            except Exception as e:
-                logger.error(f"Error extracting network info from GraphML: {e}")
-        
-        # チャットメッセージを処理
-        result = chat_processor(message, network_info, graphml_content)
-        
-        # GraphMLコンテンツが変更された場合、その内容を返す
-        if "graphml_content" in result:
-            return result
-        
-        # 結果にGraphMLコンテンツを追加
-        if graphml_content is not None and "graphml_content" not in result:
-            result["graphml_content"] = graphml_content
-            
-        return result
-    except ImportError:
-        # 基本的な実装（実際のプロジェクトでは適切な実装を行う）
-        return {
-            "success": True,
-            "content": "申し訳ありませんが、チャットメッセージの処理モジュールが見つかりません。",
-            "graphml_content": graphml_content
-        }
 
 # ヘルスチェックエンドポイント
 @app.get("/health")
@@ -557,61 +504,6 @@ async def api_import_graphml(params: ImportGraphMLParams):
         logger.error(f"Error importing GraphML: {e}")
         return {"result": {"success": False, "error": f"Error importing GraphML: {str(e)}"}}
 
-# GraphML形式の変換エンドポイント
-@app.post("/tools/convert_graphml")
-async def api_convert_graphml(params: ConvertGraphMLParams):
-    try:
-        result = convert_to_standard_graphml(params.graphml_content)
-        if "graph" in result:
-            del result["graph"]
-        return {"result": result}
-    except Exception as e:
-        logger.error(f"Error converting GraphML: {e}")
-        return {"result": {"success": False, "error": f"Error converting GraphML: {str(e)}"}}
-
-# チャットメッセージ処理エンドポイント
-@app.post("/tools/process_chat_message")
-async def api_process_chat_message(params: ChatMessageParams):
-    try:
-        # 現在のネットワーク情報を取得（GraphMLがない場合）
-        if params.graphml_content is None and state.graph is not None:
-            graphml_result = export_network_as_graphml(state.graph, state.positions, state.visual_properties)
-            if graphml_result["success"]:
-                params.graphml_content = graphml_result["content"]
-        
-        # チャットメッセージを処理
-        result = process_chat_message(params.message, params.graphml_content)
-        
-        # GraphMLコンテンツが返された場合、インポートして状態を更新
-        if result.get("success") and result.get("graphml_content"):
-            try:
-                import_result = parse_graphml_string(result["graphml_content"])
-                if import_result["success"]:
-                    state.graph = import_result["graph"]
-                    state.positions = import_result["nodes"]
-                    state.edges = import_result["edges"]
-            except Exception as e:
-                logger.error(f"Error importing GraphML from chat response: {e}")
-        
-        return {"result": result}
-    except Exception as e:
-        logger.error(f"Error processing chat message: {e}")
-        return {"result": {"success": False, "content": f"Error processing chat message: {str(e)}"}}
-
-# GraphMLチャットエンドポイント
-@app.post("/tools/graphml_chat")
-async def api_graphml_chat(params: ChatMessageParams):
-    try:
-        # GraphMLコンテンツが提供されているかチェック
-        if not params.graphml_content:
-            return {"result": {"success": False, "error": "GraphML content is required"}}
-        
-        # チャットメッセージを処理
-        result = process_chat_message(params.message, params.graphml_content)
-        return {"result": result}
-    except Exception as e:
-        logger.error(f"Error processing GraphML chat: {e}")
-        return {"result": {"success": False, "content": f"Error processing GraphML chat: {str(e)}"}}
 
 # レイアウト変更エンドポイント
 @app.post("/tools/change_layout")
@@ -712,18 +604,6 @@ async def get_mcp_info():
             {
                 "name": "import_graphml",
                 "description": "Import a network from GraphML"
-            },
-            {
-                "name": "convert_graphml",
-                "description": "Convert GraphML to a standardized format"
-            },
-            {
-                "name": "process_chat_message",
-                "description": "Process a chat message and perform network operations"
-            },
-            {
-                "name": "graphml_chat",
-                "description": "Process a chat message with GraphML content"
             },
             {
                 "name": "change_layout",

@@ -267,14 +267,6 @@ async def use_networkx_tool(tool_name: str, request: MCPToolRequest):
                         "edges": result.get("result", {}).get("edges", [])
                     }
                 })
-            elif tool_name == "process_chat_message":
-                # チャットメッセージ処理
-                network_update = result.get("result", {}).get("networkUpdate")
-                if network_update:
-                    await manager.broadcast({
-                        "type": "network_update",
-                        "data": network_update
-                    })
         
         return result
     except Exception as e:
@@ -311,9 +303,5 @@ async def get_mcp_info():
                 "name": "export_graphml",
                 "description": "Export the current network as GraphML"
             },
-            {
-                "name": "process_chat_message",
-                "description": "Process a chat message and perform network operations"
-            }
         ]
     }
