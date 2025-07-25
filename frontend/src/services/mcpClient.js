@@ -2,14 +2,17 @@
  * MCP (Model Context Protocol) client for interacting with the MCP server.
  * This client provides methods for using MCP tools and accessing MCP resources.
  * Enhanced with network data persistence and advanced layout algorithms.
+ * 
+ * NOTE: This file has been updated to use the API server as a proxy to NetworkXMCP.
+ * Direct communication with NetworkXMCP has been removed.
  */
 
 import axios from "axios";
+import { networkAPI } from "./api";
 
 // API URL
 const API_URL = "http://localhost:8000";
 const MCP_URL = `${API_URL}/proxy/networkx`;
-const NETWORKX_URL = "http://localhost:8001";
 
 /**
  * MCP client for interacting with the network visualization MCP server.
@@ -24,26 +27,11 @@ class MCPClient {
    */
   async useTool(toolName, args = {}) {
     try {
-      console.log(`Using MCP tool: ${toolName}`, args);
-
-      // Get token from localStorage
-      const token = localStorage.getItem("token");
-      if (!token) {
-        console.error("No token found, cannot use MCP tool");
-        throw new Error("Authentication required");
-      }
-
-      // Call MCP tool endpoint
-      const response = await axios.post(
-        `${MCP_URL}/tools/${toolName}`,
-        { arguments: args },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      );
-
+      console.log(`Using MCP tool via API proxy: ${toolName}`, args);
+      
+      // Use networkAPI to call the tool via API proxy
+      const response = await networkAPI.useTool(toolName, args);
+      
       console.log(`MCP tool ${toolName} response:`, response.data);
 
       // レスポンスチェック - resultが存在しない場合のハンドリング
@@ -88,7 +76,7 @@ class MCPClient {
    */
   async accessResource(resourceUri) {
     try {
-      console.log(`Accessing MCP resource: ${resourceUri}`);
+      console.log(`Accessing MCP resource via API proxy: ${resourceUri}`);
 
       // Get token from localStorage
       const token = localStorage.getItem("token");
@@ -97,8 +85,8 @@ class MCPClient {
         throw new Error("Authentication required");
       }
 
-      // Call MCP resource endpoint
-      const response = await axios.get(`${MCP_URL}${resourceUri}`, {
+      // Call MCP resource endpoint via API proxy
+      const response = await axios.get(`${API_URL}/proxy/networkx${resourceUri}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -140,10 +128,8 @@ class MCPClient {
    * @returns {Promise<object>} - Updated network positions
    */
   async changeLayout(layoutType, layoutParams = {}) {
-    return this.useTool("change_layout", {
-      layout_type: layoutType,
-      layout_params: layoutParams,
-    });
+    return networkAPI.changeLayout(layoutType, layoutParams)
+      .then(response => response.data.result);
   }
 
   /**
@@ -153,9 +139,8 @@ class MCPClient {
    * @returns {Promise<object>} - Centrality values for nodes
    */
   async calculateCentrality(centralityType) {
-    return this.useTool("calculate_centrality", {
-      centrality_type: centralityType,
-    });
+    return networkAPI.calculateCentrality(centralityType)
+      .then(response => response.data.result);
   }
 
   /**
@@ -223,15 +208,15 @@ class MCPClient {
    */
   async getNetworkInfo() {
     try {
-      // API呼び出しを実行して、より柔軟にレスポンスを処理
-      console.log("Getting network information");
+      console.log("Getting network information via API proxy");
 
       try {
-        const result = await this.useTool("get_network_info", {});
+        const response = await networkAPI.getNetworkInfo();
+        const result = response.data.result;
 
         // レスポンスの検証
         if (!result) {
-          console.warn("getNetworkInfo: No result returned from MCP server");
+          console.warn("getNetworkInfo: No result returned from API proxy");
           return this.getDefaultNetworkInfo();
         }
 
@@ -289,16 +274,15 @@ class MCPClient {
    */
   async getSampleNetwork() {
     try {
-      console.log(`Getting sample network directly from NetworkX server`);
-
-      // Call the direct endpoint on the NetworkX MCP server without authentication
-      // This endpoint is publicly accessible
-      const response = await axios.get(`${NETWORKX_URL}/get_sample_network`);
-
-      console.log(`Sample network response from direct call:`, response.data);
+      console.log(`Getting sample network via API proxy`);
+      
+      // Use networkAPI to get sample network via API proxy
+      const response = await networkAPI.getSampleNetwork();
+      
+      console.log(`Sample network response:`, response.data);
       return response.data;
-    } catch (directError) {
-      console.error(`Error getting sample network directly:`, directError);
+    } catch (error) {
+      console.error(`Error getting sample network:`, error);
 
       try {
         console.log(`Creating fallback sample network`);
@@ -374,46 +358,32 @@ class MCPClient {
   }
 
   /**
-   * Direct call to NetworkX MCP server endpoints.
-   * This is a fallback method when the MCP proxy is not working.
+   * Call to NetworkX MCP server endpoints via API proxy.
+   * This replaces the direct call method.
    *
    * @param {string} endpoint - Endpoint to call
    * @param {object} data - Data to send (for POST requests)
    * @param {string} method - HTTP method (GET or POST)
    * @returns {Promise<object>} - Response data
    */
-  async callNetworkXDirect(endpoint, data = null, method = "GET") {
+  async callNetworkXViaProxy(endpoint, data = null, method = "GET") {
     try {
-      console.log(`Direct call to NetworkX endpoint: ${endpoint}`);
-
-      // Get token from localStorage
-      const token = localStorage.getItem("token");
-      if (!token) {
-        console.error("No token found, cannot call NetworkX directly");
-        throw new Error("Authentication required");
-      }
-
-      const config = {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      };
+      console.log(`Calling NetworkX endpoint via API proxy: ${endpoint}`);
 
       let response;
       if (method.toUpperCase() === "GET") {
-        response = await axios.get(`${NETWORKX_URL}/${endpoint}`, config);
+        response = await axios.get(`${API_URL}/proxy/networkx/${endpoint}`);
       } else {
         response = await axios.post(
-          `${NETWORKX_URL}/${endpoint}`,
-          data,
-          config,
+          `${API_URL}/proxy/networkx/${endpoint}`,
+          { arguments: data },
         );
       }
 
-      console.log(`NetworkX direct response:`, response.data);
+      console.log(`NetworkX proxy response:`, response.data);
       return response.data;
     } catch (error) {
-      console.error(`Error calling NetworkX directly:`, error);
+      console.error(`Error calling NetworkX via proxy:`, error);
       throw error;
     }
   }
@@ -474,7 +444,8 @@ class MCPClient {
    * @returns {Promise<object>} - GraphML string representation of the network
    */
   async exportNetworkAsGraphML() {
-    return this.useTool("export_graphml", {});
+    return networkAPI.exportNetworkAsGraphML()
+      .then(response => response.data.result);
   }
 
   /**
@@ -484,9 +455,8 @@ class MCPClient {
    * @returns {Promise<object>} - Import result with network data
    */
   async importGraphML(graphmlContent) {
-    return this.useTool("import_graphml", {
-      graphml_content: graphmlContent,
-    });
+    return networkAPI.importGraphML(graphmlContent)
+      .then(response => response.data.result);
   }
 
   /**
@@ -496,9 +466,8 @@ class MCPClient {
    * @returns {Promise<object>} - Conversion result with standardized GraphML content
    */
   async convertGraphML(graphmlContent) {
-    return this.useTool("convert_graphml", {
-      graphml_content: graphmlContent,
-    });
+    return networkAPI.convertGraphML(graphmlContent)
+      .then(response => response.data.result);
   }
 
   /**
@@ -510,11 +479,8 @@ class MCPClient {
    * @returns {Promise<object>} - Updated GraphML content with node positions
    */
   async graphmlLayout(graphmlContent, layoutType, layoutParams = {}) {
-    return this.useTool("graphml_layout", {
-      graphml_content: graphmlContent,
-      layout_type: layoutType,
-      layout_params: layoutParams,
-    });
+    return networkAPI.graphmlLayout(graphmlContent, layoutType, layoutParams)
+      .then(response => response.data.result);
   }
 
   /**
@@ -525,10 +491,8 @@ class MCPClient {
    * @returns {Promise<object>} - Updated GraphML content with centrality values
    */
   async graphmlCentrality(graphmlContent, centralityType) {
-    return this.useTool("graphml_centrality", {
-      graphml_content: graphmlContent,
-      centrality_type: centralityType,
-    });
+    return networkAPI.graphmlCentrality(graphmlContent, centralityType)
+      .then(response => response.data.result);
   }
 
   /**
@@ -580,23 +544,19 @@ class MCPClient {
     propertyValue,
     propertyMapping = {},
   ) {
-    return this.useTool("graphml_visual_properties", {
-      graphml_content: graphmlContent,
-      property_type: propertyType,
-      property_value: propertyValue,
-      property_mapping: propertyMapping,
-    });
+    return networkAPI.graphmlVisualProperties(graphmlContent, propertyType, propertyValue, propertyMapping)
+      .then(response => response.data.result);
   }
 
   /**
-   * Get information about a network in GraphML format.
+   * Recommend a layout algorithm based on user's question or network properties.
    *
-   * @param {string} graphmlContent - GraphML format string
-   * @returns {Promise<object>} - Network information and updated GraphML content
+   * @param {string} question - User's question about visualization
+   * @returns {Promise<object>} - Recommended layout algorithm and parameters
    */
-  async graphmlNetworkInfo(graphmlContent) {
-    return this.useTool("graphml_network_info", {
-      graphml_content: graphmlContent,
+  async recommendLayout(question) {
+    return this.useTool("recommend_layout", {
+      question,
     });
   }
 

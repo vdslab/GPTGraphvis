@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import mcpClient from "./mcpClient";
+import { networkAPI } from "./api";
 
 // Helper function to generate colors based on centrality values
 const getCentralityColor = (value, maxValue) => {
@@ -43,7 +44,7 @@ const useNetworkStore = create((set, get) => ({
     set({ layoutParams });
   },
 
-  // Calculate layout using MCP client
+  // Calculate layout using API
   calculateLayout: async () => {
     const { nodes, layout, layoutParams } = get();
 
@@ -71,8 +72,9 @@ const useNetworkStore = create((set, get) => ({
 
     set({ isLoading: true, error: null });
     try {
-      // Use MCP client to calculate layout
-      const result = await mcpClient.changeLayout(layout, layoutParams || {});
+      // Use API to calculate layout
+      const response = await networkAPI.changeLayout(layout, layoutParams || {});
+      const result = response.data.result;
 
       if (result && result.success) {
         set({
@@ -87,7 +89,7 @@ const useNetworkStore = create((set, get) => ({
     } catch (error) {
       console.error("Error calculating layout:", error);
 
-      // Create a fallback layout if MCP layout calculation fails
+      // Create a fallback layout if API layout calculation fails
       try {
         console.log("Using fallback layout calculation");
 
@@ -194,15 +196,16 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
-  // Get layout recommendation using MCP client
+  // Get layout recommendation using API
   getLayoutRecommendation: async (description, purpose) => {
     set({ isLoading: true, error: null, recommendation: null });
     try {
-      // Use MCP client to get layout recommendation
-      const result = await mcpClient.useTool("recommend_layout", {
+      // Use API to get layout recommendation
+      const response = await networkAPI.useTool("recommend_layout", {
         description,
         purpose,
       });
+      const result = response.data.result;
 
       if (result && result.success) {
         set({
@@ -242,15 +245,15 @@ const useNetworkStore = create((set, get) => ({
     return get().calculateLayout();
   },
 
-  // Load sample network using MCP client
+  // Load sample network using API
   loadSampleNetwork: async () => {
     set({ isLoading: true, error: null });
     try {
       console.log("Attempting to load sample network");
 
-      // Use the enhanced getSampleNetwork method from mcpClient
-      // which tries multiple approaches to get the sample network
-      const result = await mcpClient.getSampleNetwork();
+      // Use API to get sample network
+      const response = await networkAPI.getSampleNetwork();
+      const result = response.data;
 
       if (result && result.success) {
         console.log("Sample network loaded successfully:", result);
@@ -354,7 +357,8 @@ const useNetworkStore = create((set, get) => ({
       );
 
       // Export current network as GraphML
-      const exportResult = await mcpClient.exportNetworkAsGraphML();
+      const exportResponse = await networkAPI.exportNetworkAsGraphML();
+      const exportResult = exportResponse.data.result;
 
       if (!exportResult || !exportResult.success || !exportResult.content) {
         throw new Error("Failed to export network as GraphML");
@@ -362,16 +366,18 @@ const useNetworkStore = create((set, get) => ({
 
       // Use GraphML-based centrality API
       const graphmlContent = exportResult.content;
-      const result = await mcpClient.graphmlCentrality(
+      const centralityResponse = await networkAPI.graphmlCentrality(
         graphmlContent,
         centralityType,
       );
+      const result = centralityResponse.data.result;
 
       if (result && result.success && result.graphml_content) {
         // Parse the returned GraphML content
-        const importResult = await mcpClient.importGraphML(
+        const importResponse = await networkAPI.importGraphML(
           result.graphml_content,
         );
+        const importResult = importResponse.data.result;
 
         if (importResult && importResult.success) {
           // Extract centrality values from node attributes
@@ -407,9 +413,8 @@ const useNetworkStore = create((set, get) => ({
       // Fall back to original implementation for resilience
       try {
         // NetworkX MCP サーバーを使用して中心性を計算
-        const result = await mcpClient.useTool("calculate_centrality", {
-          centrality_type: centralityType,
-        });
+        const response = await networkAPI.calculateCentrality(centralityType);
+        const result = response.data.result;
 
         if (result && result.success) {
           // 計算された中心性値を取得
@@ -493,7 +498,8 @@ const useNetworkStore = create((set, get) => ({
         const graphmlContent = await fileContentPromise;
 
         // First convert to standard GraphML format
-        const convertResult = await mcpClient.convertGraphML(graphmlContent);
+        const convertResponse = await networkAPI.convertGraphML(graphmlContent);
+        const convertResult = convertResponse.data.result;
 
         if (
           !convertResult ||
@@ -504,9 +510,10 @@ const useNetworkStore = create((set, get) => ({
         }
 
         // Import the standardized GraphML
-        const importResult = await mcpClient.importGraphML(
+        const importResponse = await networkAPI.importGraphML(
           convertResult.graphml_content,
         );
+        const importResult = importResponse.data.result;
 
         if (importResult && importResult.success) {
           console.log("GraphML file imported successfully:", importResult);
@@ -544,12 +551,13 @@ const useNetworkStore = create((set, get) => ({
 
         const fileContent = await fileContentPromise;
 
-        // Use MCP client to upload network file
-        const result = await mcpClient.useTool("upload_network_file", {
+        // Use API to upload network file
+        const response = await networkAPI.useTool("upload_network_file", {
           file_content: fileContent,
           file_name: file.name,
           file_type: file.type,
         });
+        const result = response.data.result;
 
         if (result && result.success) {
           console.log("Network file uploaded successfully:", result);
@@ -563,7 +571,7 @@ const useNetworkStore = create((set, get) => ({
           });
 
           // Export to GraphML to ensure standard format
-          await mcpClient.exportNetworkAsGraphML();
+          await networkAPI.exportNetworkAsGraphML();
 
           // Calculate layout for the uploaded network
           return get().calculateLayout();
@@ -588,8 +596,11 @@ const useNetworkStore = create((set, get) => ({
     try {
       console.log("Recommending layout based on question:", question);
 
-      // Use MCP client to get layout recommendation
-      const result = await mcpClient.recommendLayout(question);
+      // Use API to get layout recommendation
+      const response = await networkAPI.useTool("recommend_layout", {
+        question,
+      });
+      const result = response.data.result;
 
       if (result && result.success) {
         console.log("Layout recommendation:", result);

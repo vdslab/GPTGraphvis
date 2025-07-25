@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import useNetworkStore from './networkStore';
 import mcpClient from './mcpClient';
+import { networkChatAPI } from './api';
 
 const useChatStore = create((set, get) => ({
   messages: [],
@@ -506,9 +507,10 @@ You can also upload network files using the "Upload Network File" button at the 
     try {
       console.log("Processing message:", message);
       
-      // Use MCP server to process chat message
-      const operationResult = await mcpClient.processChatMessage(message);
-      console.log("MCP operation result:", operationResult ? operationResult : "No result");
+      // Use API to process chat message
+      const response = await networkChatAPI.processChatMessage(message);
+      const operationResult = response.data;
+      console.log("API operation result:", operationResult ? operationResult : "No result");
       
       // Create response based on operation result
       let responseContent = "I'm sorry, I don't understand that request. You can ask me about network visualization or uploading network files.";
