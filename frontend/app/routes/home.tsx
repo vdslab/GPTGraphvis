@@ -14,23 +14,19 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const { user, token, getCurrentUser } = useAuthStore();
 
+  // トークンがある場合は現在のユーザー情報を取得
   useEffect(() => {
-    // トークンがある場合は現在のユーザー情報を取得
     if (token && !user) {
       getCurrentUser();
     }
   }, [token, user, getCurrentUser]);
 
-  // 認証済みの場合はダッシュボードにリダイレクト
-  if (user && token) {
+  // 認証状態に基づいてリダイレクト
+  if (token) {
+    // 認証済みの場合はダッシュボードにリダイレクト
     return <Navigate to="/dashboard" replace />;
   }
 
   // 未認証の場合は認証ページにリダイレクト
-  if (!token) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  // ロード中の場合はWelcomeページを表示
-  return <Welcome />;
+  return <Navigate to="/auth" replace />;
 }

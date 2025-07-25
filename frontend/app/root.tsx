@@ -5,7 +5,10 @@ import {
   Outlet,
   Scripts,
   ScrollRestoration,
+  useLocation,
+  useNavigate,
 } from "react-router";
+import { useEffect } from "react";
 
 import type { Route } from "./+types/root";
 import "./app.css";
@@ -31,6 +34,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <Meta />
         <Links />
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            // クライアントサイドでのみ実行されるコード
+            if (window.location.pathname === '/') {
+              const token = localStorage.getItem('token');
+              if (token) {
+                window.location.href = '/dashboard';
+              } else {
+                window.location.href = '/auth';
+              }
+            }
+          `
+        }} />
       </head>
       <body>
         {children}
@@ -42,6 +58,23 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    // ルートパスにアクセスした場合のみリダイレクト
+    if (location.pathname === '/') {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        // ログインしていない場合は/authにリダイレクト
+        navigate('/auth', { replace: true });
+      } else {
+        // ログインしている場合は/dashboardにリダイレクト
+        navigate('/dashboard', { replace: true });
+      }
+    }
+  }, [location.pathname, navigate]);
+  
   return <Outlet />;
 }
 
