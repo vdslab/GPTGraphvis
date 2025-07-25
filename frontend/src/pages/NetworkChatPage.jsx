@@ -545,10 +545,10 @@ const NetworkChatPage = () => {
   };
 
   return (
-    <div className="h-screen flex flex-col">
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
+    <div className="h-screen flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden max-h-screen">
         {/* Left side - Chat panel */}
-        <div className="w-full md:w-2/5 lg:w-1/3 flex flex-col bg-white border-r border-gray-200">
+        <div className="w-full md:w-3/5 lg:w-1/2 flex flex-col bg-white border-r border-gray-200">
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((message, index) => (
