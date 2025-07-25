@@ -16,6 +16,7 @@ class User(Base):
     # Relationships
     conversations = relationship("Conversation", back_populates="user", cascade="all, delete-orphan")
     messages = relationship("ChatMessage", back_populates="user", cascade="all, delete-orphan")
+    networks = relationship("Network", back_populates="user", cascade="all, delete-orphan")
 
 class Conversation(Base):
     __tablename__ = "conversations"
@@ -44,3 +45,19 @@ class ChatMessage(Base):
     # Relationships
     user = relationship("User", back_populates="messages")
     conversation = relationship("Conversation", back_populates="messages")
+
+class Network(Base):
+    __tablename__ = "networks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, default="Untitled Network")
+    user_id = Column(Integer, ForeignKey("users.id"))
+    nodes_data = Column(Text)  # JSON string for nodes data
+    edges_data = Column(Text)  # JSON string for edges data
+    layout_data = Column(Text, default="{}")  # JSON string for layout positions
+    meta_data = Column(Text, default="{}")  # JSON string for additional metadata
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    user = relationship("User", back_populates="networks")

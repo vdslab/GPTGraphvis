@@ -1,17 +1,21 @@
-FROM node:20-alpine AS development-dependencies-env
-COPY package*.json /app/
-WORKDIR /app
-RUN npm ci
+FROM node:20-alpine
 
-FROM node:20-alpine AS build-env
-COPY . /app/
-COPY --from=development-dependencies-env /app/node_modules /app/node_modules
 WORKDIR /app
+
+# Copy package.json (without package-lock.json to avoid npm bug)
+COPY package.json ./
+
+# Install dependencies (npm will create a new package-lock.json)
+RUN npm install
+
+# Copy the rest of the application
+COPY . .
+
+# Build the application
 RUN npm run build
 
-FROM node:20-alpine
-RUN npm install -g serve
-COPY --from=build-env /app/build/client /app/client
-WORKDIR /app
+# Expose the port the app will run on
 EXPOSE 3000
-CMD ["serve", "-s", "client", "-l", "3000"]
+
+# Command to run the application using React Router's built-in server
+CMD ["npm", "start"]
