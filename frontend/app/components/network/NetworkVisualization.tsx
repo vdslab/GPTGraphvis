@@ -1,16 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import type { CytoscapeElement } from '../../lib/types';
+import type { NetworkVisualizationProps } from '../../lib/types';
 
 // Note: These will be available after npm install
 // import cytoscape from 'cytoscape';
 // import cose from 'cytoscape-cose';
-
-interface NetworkVisualizationProps {
-  data: CytoscapeElement | null;
-  onNodeSelect?: (nodeId: string) => void;
-  onEdgeSelect?: (edgeId: string) => void;
-  className?: string;
-}
 
 export const NetworkVisualization: React.FC<NetworkVisualizationProps> = ({
   data,
@@ -30,7 +23,7 @@ export const NetworkVisualization: React.FC<NetworkVisualizationProps> = ({
       try {
         // Dynamic import to handle missing dependencies
         const cytoscape = await import('cytoscape').catch(() => null);
-        const coseBilkent = await import('cytoscape-cose-bilkent').catch(() => null);
+        const coseBilkent = await import('cytoscape-cose-bilkent' as any).catch(() => null);
 
         if (!cytoscape) {
           setError('Cytoscape.js is not installed. Please run: npm install');

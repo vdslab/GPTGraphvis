@@ -1,11 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuthStore } from '../../store/authStore';
-import type { ChatMessage, Conversation } from '../../lib/types';
-
-interface ChatInterfaceProps {
-  className?: string;
-  onNetworkUpdate?: (data: any) => void;
-}
+import { chatAPI } from '../../lib/api';
+import type { ChatMessage, Conversation, ChatInterfaceProps } from '../../lib/types';
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   className = '',
@@ -34,29 +30,10 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [user]);
 
-  const makeRequest = async (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('token');
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    };
-
-    const response = await fetch(`http://localhost:8000${url}`, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return response.json();
-  };
-
   const fetchConversations = async () => {
     try {
-      const convs: Conversation[] = await makeRequest('/chat/conversations');
+      const response = await chatAPI.getConversations();
+      const convs: Conversation[] = response.data;
       setConversations(convs);
       
       if (convs.length > 0 && !currentConversation) {
@@ -70,7 +47,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const fetchMessages = async (conversationId: number) => {
     try {
-      const msgs: ChatMessage[] = await makeRequest(`/chat/conversations/${conversationId}/messages`);
+      const response = await chatAPI.getMessages(conversationId);
+      const msgs: ChatMessage[] = response.data;
       setMessages(msgs);
     } catch (error) {
       console.error('Failed to fetch messages:', error);
@@ -79,10 +57,8 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const createNewConversation = async () => {
     try {
-      const newConv: Conversation = await makeRequest('/chat/conversations', {
-        method: 'POST',
-        body: JSON.stringify({ title: '新しい会話' }),
-      });
+      const response = await chatAPI.createConversation('新しい会話');
+      const newConv: Conversation = response.data;
       
       setConversations(prev => [newConv, ...prev]);
       setCurrentConversation(newConv);
@@ -113,13 +89,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
       setMessages(prev => [...prev, userMessage]);
 
       // Send message to API
-      await makeRequest(`/chat/conversations/${currentConversation.id}/messages`, {
-        method: 'POST',
-        body: JSON.stringify({
-          content: messageContent,
-          role: 'user',
-        }),
-      });
+      await chatAPI.sendMessage(currentConversation.id, messageContent);
 
       // Refresh messages to get the assistant's response
       setTimeout(() => {

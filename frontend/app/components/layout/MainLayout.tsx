@@ -4,6 +4,7 @@ import { useNetworkStore } from '../../store/networkStore';
 import { useWebSocketStore } from '../../store/websocketStore';
 import { NetworkVisualization } from '../network/NetworkVisualization';
 import { ChatInterface } from '../chat/ChatInterface';
+import { networkAPI } from '../../lib/api';
 import type { CytoscapeElement, Network } from '../../lib/types';
 
 export const MainLayout: React.FC = () => {
@@ -40,37 +41,26 @@ export const MainLayout: React.FC = () => {
       }
     };
 
+    // チャットメッセージの更新も処理
+    const handleChatMessage = (event: CustomEvent) => {
+      console.log('Chat message received:', event.detail);
+      // 必要に応じてUIの更新処理をここに追加
+    };
+
     window.addEventListener('network-updated', handleNetworkUpdate as EventListener);
+    window.addEventListener('chat-message-received', handleChatMessage as EventListener);
     
     return () => {
       window.removeEventListener('network-updated', handleNetworkUpdate as EventListener);
+      window.removeEventListener('chat-message-received', handleChatMessage as EventListener);
     };
   }, [currentNetwork]);
-
-  const makeRequest = async (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('token');
-    const headers = {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...options.headers,
-    };
-
-    const response = await fetch(`http://localhost:8000${url}`, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    return response.json();
-  };
 
   const fetchNetworkData = async (networkId: number) => {
     setIsLoadingNetwork(true);
     try {
-      const data: CytoscapeElement = await makeRequest(`/network/${networkId}/cytoscape`);
+      const response = await networkAPI.getNetworkCytoscape(networkId);
+      const data: CytoscapeElement = response.data;
       setNetworkData(data);
     } catch (error) {
       console.error('Failed to fetch network data:', error);
