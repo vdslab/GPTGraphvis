@@ -1,7 +1,6 @@
-import os
 import time
 import logging
-from fastapi import FastAPI, HTTPException, Request, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Optional, Any
@@ -16,8 +15,6 @@ from routers import auth as auth_router
 from routers import chat as chat_router
 from routers import proxy as proxy_router
 import auth
-import models
-import mcp_server
 
 # Load environment variables
 load_dotenv()
@@ -65,10 +62,42 @@ app.add_middleware(
 app.include_router(auth_router.router)
 app.include_router(chat_router.router)
 app.include_router(proxy_router.router)
-app.include_router(mcp_server.app, prefix="/mcp")
 
-# WebSocketマネージャーの取得
-ws_manager = mcp_server.manager
+# Create a simple MCP router instead of including the full app
+mcp_router = APIRouter()
+
+@mcp_router.get("/health")
+async def mcp_health():
+    return {"status": "ok", "service": "mcp"}
+
+# Include the MCP router
+app.include_router(mcp_router, prefix="/mcp")
+
+# WebSocketマネージャーの作成
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+    
+    async def connect(self, websocket: WebSocket, client_id: str):
+        await websocket.accept()
+        self.active_connections[client_id] = websocket
+        logging.info(f"Client {client_id} connected. Total connections: {len(self.active_connections)}")
+    
+    def disconnect(self, client_id: str):
+        if client_id in self.active_connections:
+            del self.active_connections[client_id]
+            logging.info(f"Client {client_id} disconnected. Total connections: {len(self.active_connections)}")
+    
+    async def send_message(self, message: Dict[str, Any], client_id: str):
+        if client_id in self.active_connections:
+            await self.active_connections[client_id].send_json(message)
+    
+    async def broadcast(self, message: Dict[str, Any]):
+        for connection in self.active_connections.values():
+            await connection.send_json(message)
+
+# WebSocketマネージャーのインスタンス
+ws_manager = ConnectionManager()
 
 @app.get("/")
 async def root():
