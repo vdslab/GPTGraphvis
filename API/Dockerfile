@@ -1,9 +1,5 @@
 FROM python:3.12-slim
 
-# 必要なパッケージのインストール
-RUN apt-get update && apt-get install -y curl build-essential libpq-dev gcc && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
-
 # uvのインストール（公式ドキュメント推奨方法）
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 

@@ -32,3 +32,16 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 CREATE INDEX IF NOT EXISTS idx_chat_messages_conversation_id ON chat_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user_id ON chat_messages(user_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+
+-- Create the networks table
+CREATE TABLE IF NOT EXISTS networks (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR DEFAULT 'Untitled Network',
+    conversation_id INTEGER REFERENCES conversations(id) ON DELETE CASCADE UNIQUE,
+    graphml_content TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Create index for faster queries
+CREATE INDEX IF NOT EXISTS idx_networks_conversation_id ON networks(conversation_id);

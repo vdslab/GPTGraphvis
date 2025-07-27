@@ -29,6 +29,7 @@ class Conversation(Base):
     # Relationships
     user = relationship("User", back_populates="conversations")
     messages = relationship("ChatMessage", back_populates="conversation", cascade="all, delete-orphan")
+    network = relationship("Network", back_populates="conversation", uselist=False, cascade="all, delete-orphan")
 
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
@@ -44,3 +45,16 @@ class ChatMessage(Base):
     # Relationships
     user = relationship("User", back_populates="messages")
     conversation = relationship("Conversation", back_populates="messages")
+
+class Network(Base):
+    __tablename__ = "networks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, default="Untitled Network")
+    conversation_id = Column(Integer, ForeignKey("conversations.id"), unique=True)
+    graphml_content = Column(Text, nullable=False) # GraphML content
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    # Relationships
+    conversation = relationship("Conversation", back_populates="network")

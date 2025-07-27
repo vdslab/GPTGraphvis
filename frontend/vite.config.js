@@ -11,12 +11,17 @@ export default defineConfig({
       usePolling: true,
     },
     hmr: {
-      // HMRの設定を追加
       host: "0.0.0.0",
       port: 3000,
       protocol: "ws",
-      clientPort: 3000, // クライアント側のポート
+      clientPort: 3000,
     },
-    // Removed proxy configuration as we're connecting directly to the API
+    fs: {
+      strict: false,
+    },
+  },
+  cacheDir: 'node_modules/.vite/custom_cache_dir',
+  build: {
+    force: true,
   },
 });

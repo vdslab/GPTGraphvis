@@ -1,14 +1,21 @@
 {
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "http://api:80/$1" }
+    { "source": "/api/(.*)", "destination": "http://api:8000/$1" },
+    { "source": "/**", "destination": "/index.html" }
   ],
   "headers": [
     {
       "source": "**",
       "headers": [
         { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, PUT, DELETE, OPTIONS" },
-        { "key": "Access-Control-Allow-Headers", "value": "X-Requested-With, Content-Type, Accept, Authorization" }
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
+        },
+        {
+          "key": "Access-Control-Allow-Headers",
+          "value": "X-Requested-With, Content-Type, Accept, Authorization"
+        }
       ]
     }
   ]

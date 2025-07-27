@@ -8,9 +8,10 @@ import RegisterPage from './pages/RegisterPage';
 // Removed NetworkVisualizationPage and LayoutRecommendationPage as part of migration to MCP-based design
 import NetworkChatPage from './pages/NetworkChatPage';
 import useAuthStore from './services/authStore';
+import websocketService from './services/websocketService';
 
 function App() {
-  const { checkAuth, isLoading } = useAuthStore();
+  const { checkAuth, isLoading, isAuthenticated } = useAuthStore();
   const [authInitialized, setAuthInitialized] = useState(false);
   
   // Check authentication status on app load
@@ -29,6 +30,20 @@ function App() {
     
     initAuth();
   }, [checkAuth]);
+  
+  // Connect to WebSocket when authenticated
+  useEffect(() => {
+    if (isAuthenticated && authInitialized) {
+      console.log("App: User is authenticated, connecting to WebSocket");
+      websocketService.connect();
+      
+      // Cleanup function to disconnect WebSocket when component unmounts
+      return () => {
+        console.log("App: Disconnecting WebSocket");
+        websocketService.disconnect();
+      };
+    }
+  }, [isAuthenticated, authInitialized]);
   
   // Show loading spinner while checking authentication
   if (isLoading && !authInitialized) {

@@ -89,3 +89,35 @@ async def get_current_active_user(
     if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+def get_current_user_from_token(token: str) -> Optional[models.User]:
+    """
+    WebSocketなどのDependsを使用できない場所でトークンからユーザーを取得する
+    
+    Args:
+        token: JWTトークン
+        
+    Returns:
+        User: 認証されたユーザー、または認証失敗時はNone
+    """
+    try:
+        # JWTトークンをデコード
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        
+        # データベースからユーザーを取得
+        from database import SessionLocal
+        db = SessionLocal()
+        try:
+            user = get_user(db, username=username)
+            if user is None or not user.is_active:
+                return None
+            return user
+        finally:
+            db.close()
+    except JWTError:
+        return None
+    except Exception:
+        return None

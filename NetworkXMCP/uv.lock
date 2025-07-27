@@ -453,22 +453,26 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "python-louvain" },
+    { name = "python-multipart" },
+    { name = "requests" },
     { name = "scikit-learn" },
     { name = "uvicorn" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.95.0" },
+    { name = "fastapi", specifier = ">=0.103.1" },
     { name = "fastapi-mcp", specifier = "==0.3.7" },
-    { name = "matplotlib", specifier = ">=3.7.0" },
-    { name = "networkx", specifier = ">=3.0" },
-    { name = "numpy", specifier = ">=1.24.0" },
-    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "matplotlib", specifier = ">=3.7.2" },
+    { name = "networkx", specifier = ">=3.1" },
+    { name = "numpy", specifier = ">=1.25.2" },
+    { name = "pydantic", specifier = ">=2.3.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-louvain", specifier = ">=0.16" },
+    { name = "python-multipart", specifier = ">=0.0.6" },
+    { name = "requests", specifier = ">=2.31.0" },
     { name = "scikit-learn", specifier = ">=1.2.0" },
-    { name = "uvicorn", specifier = ">=0.21.1" },
+    { name = "uvicorn", specifier = ">=0.23.2" },
 ]
 
 [[package]]

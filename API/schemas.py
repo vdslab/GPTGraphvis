@@ -1,8 +1,9 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
+import json
 
-# User schemas
+# --- User Schemas ---
 class UserBase(BaseModel):
     username: str
 
@@ -19,7 +20,7 @@ class User(UserBase):
         "from_attributes": True
     }
 
-# Token schemas
+# --- Token Schemas ---
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -27,7 +28,29 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
 
-# Conversation schemas
+# --- Network Schemas ---
+class NetworkBase(BaseModel):
+    name: str = "Untitled Network"
+    graphml_content: str
+
+class NetworkCreate(NetworkBase):
+    pass
+
+class NetworkUpdate(BaseModel):
+    name: Optional[str] = None
+    graphml_content: Optional[str] = None
+
+class Network(NetworkBase):
+    id: int
+    conversation_id: int
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = {
+        "from_attributes": True
+    }
+
+# --- Conversation Schemas ---
 class ConversationBase(BaseModel):
     title: str = "New Conversation"
 
@@ -39,18 +62,19 @@ class Conversation(ConversationBase):
     user_id: int
     created_at: datetime
     updated_at: Optional[datetime] = None
+    network: Optional[Network] = None
 
     model_config = {
         "from_attributes": True
     }
 
-# Chat message schemas
+# --- Chat Message Schemas ---
 class ChatMessageBase(BaseModel):
     content: str
     role: str = "user"
 
 class ChatMessageCreate(ChatMessageBase):
-    conversation_id: int
+    pass
 
 class ChatMessage(ChatMessageBase):
     id: int
@@ -66,16 +90,6 @@ class ChatMessage(ChatMessageBase):
     def get_metadata(self) -> Dict[str, Any]:
         """Get metadata as a dictionary."""
         try:
-            import json
             return json.loads(self.meta_data)
-        except:
+        except (json.JSONDecodeError, TypeError):
             return {}
-
-# Network operation schemas
-class NetworkOperationRequest(BaseModel):
-    message: str
-
-class NetworkOperationResponse(BaseModel):
-    success: bool
-    content: str
-    networkUpdate: Optional[Dict[str, Any]] = None

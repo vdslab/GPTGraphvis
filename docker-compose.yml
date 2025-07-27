@@ -1,70 +1,8 @@
 services:
-  frontend:
-    build:
-      context: frontend
-      dockerfile: Dockerfile.dev
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_started
-    networks:
-      - app-network
-
-  api:
-    build:
-      context: API
-      dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./API:/app
-    restart: unless-stopped
-    environment:
-      - LOG_LEVEL=info
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/graphvis
-      - SECRET_KEY=${SECRET_KEY}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    depends_on:
-      db:
-        condition: service_healthy
-      networkx-mcp:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
-  networkx-mcp:
-    build:
-      context: NetworkXMCP
-      dockerfile: Dockerfile
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./NetworkXMCP:/app
-    restart: unless-stopped
-    environment:
-      - LOG_LEVEL=info
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - app-network
-
   db:
     image: postgres:15
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data/
       - ./API/init.sql:/docker-entrypoint-initdb.d/init.sql
     environment:
       - POSTGRES_PASSWORD=postgres
@@ -72,23 +10,53 @@ services:
       - POSTGRES_DB=graphvis
     ports:
       - "5432:5432"
-    restart: unless-stopped
-    command: ["postgres", "-c", "max_connections=100", "-c", "shared_buffers=128MB"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - app-network
+    restart: always
 
-networks:
-  app-network:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
+  api:
+    build: ./API
+    volumes:
+      - ./API:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: always
+    environment:
+      # These are now managed in the .env file
+      # - DATABASE_URL=postgresql://postgres:postgres@db:5432/networkvis
+      # - SECRET_KEY=your-secret-key
+      # - ALGORITHM=HS256
+      # - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - NETWORKX_MCP_URL=http://networkx-mcp:8001 # This can stay as it's internal to docker-compose
+    env_file:
+      - ./.env
+
+  networkx-mcp:
+    build: ./NetworkXMCP
+    volumes:
+      - ./NetworkXMCP:/app
+    ports:
+      - "8001:8001"
+    environment:
+      - LOG_LEVEL=DEBUG
+
+  frontend:
+    build:
+      context: ./frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+      - networkx-mcp
 
 volumes:
   postgres_data:
-    driver: local

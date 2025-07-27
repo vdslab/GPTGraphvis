@@ -1,87 +1,53 @@
 # NetworkX MCP Server
 
-A FastAPI server for network visualization and analysis using NetworkX.
+NetworkX Model Context Protocol (MCP) サーバーは、ネットワーク分析と可視化のためのAPIを提供します。GraphML形式のデータをサポートし、NetworkXを使用したグラフ分析を行います。
 
-## Overview
+## 機能
 
-This server provides a Model Context Protocol (MCP) interface for network visualization and analysis using NetworkX. It allows clients to:
+- GraphMLファイルのインポート/エクスポート
+- ネットワークレイアウトの計算と適用
+- 中心性指標の計算
+- チャットインターフェースによるネットワーク操作
 
-- Upload network files
-- Apply different layout algorithms
-- Calculate centrality metrics
-- Get network information
-- Highlight nodes
-- Change visual properties
+## 使用方法
 
-## Dependencies
-
-The server uses the following dependencies:
-
-- fastapi
-- uvicorn
-- networkx
-- numpy
-- pydantic
-- python-dotenv
-- matplotlib
-- scikit-learn
-- python-louvain
-- fastapi-mcp
-
-## Installation
-
-### Using pip
+### サーバーの起動
 
 ```bash
-pip install -e .
+uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 
-### Using Docker
+### Dockerでの実行
 
 ```bash
 docker build -t networkx-mcp .
 docker run -p 8001:8001 networkx-mcp
 ```
 
-## Usage
-
-### Running the server
+### Docker Composeでの実行
 
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8001
+docker-compose up
 ```
 
-### API Endpoints
+## APIエンドポイント
 
-- `/get_sample_network`: Get a sample network (Zachary's Karate Club)
-- `/upload_network_file`: Upload a network file and parse it into nodes and edges
-- `/change_layout`: Change the layout algorithm for the network visualization
-- `/calculate_centrality`: Calculate centrality metrics for nodes in the graph
-- `/get_network_info`: Get information about the current network
-- `/get_node_info`: Get information about specific nodes in the network
-- `/highlight_nodes`: Highlight specific nodes in the network
-- `/change_visual_properties`: Change visual properties of nodes or edges
-- `/recommend_layout`: Recommend a layout algorithm based on user's question or network properties
-- `/process_chat_message`: Process a chat message and execute network operations
+- `GET /health`: ヘルスチェック
+- `GET /info`: サーバー情報
+- `GET /get_sample_network`: サンプルネットワークの取得
+- `POST /tools/export_graphml`: GraphML形式でのエクスポート
+- `POST /tools/import_graphml`: GraphML形式からのインポート
+- `POST /tools/convert_graphml`: GraphMLの標準形式への変換
+- `POST /tools/process_chat_message`: チャットメッセージの処理
+- `POST /tools/graphml_chat`: GraphMLチャット
+- `POST /tools/change_layout`: レイアウトの変更
+- `POST /tools/calculate_centrality`: 中心性の計算
 
-### MCP Resources
+## 依存関係
 
-- `/mcp/resources/network`: Get the current network as an MCP resource
-
-## Package Structure
-
-The package is organized into the following modules:
-
-- `layouts`: Layout algorithms for network visualization
-- `metrics`: Centrality metrics for network analysis
-- `tools`: Utility functions for network operations
-
-## Development
-
-### Package Management
-
-This package uses `pyproject.toml` for dependency management. To add a new dependency, add it to the `dependencies` list in the `pyproject.toml` file.
-
-### Docker
-
-The Dockerfile uses `uv` for package management. It installs the package in development mode using `uv pip install -e .`.
+- FastAPI
+- Uvicorn
+- NetworkX
+- NumPy
+- Matplotlib
+- Pydantic

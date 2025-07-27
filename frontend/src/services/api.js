@@ -82,8 +82,79 @@ export const authAPI = {
   },
 };
 
-// Network API endpoints have been removed as part of migration to MCP-based design
-export const networkAPI = {};
+// Network API endpoints
+export const networkAPI = {
+  getNetworks: () => {
+    console.log("Getting all networks");
+    return axios.get(`${API_URL}/network/`);
+  },
+  getNetwork: (networkId) => {
+    console.log("Getting network:", networkId);
+    return axios.get(`${API_URL}/network/${networkId}`);
+  },
+  createNetwork: (networkData) => {
+    console.log("Creating network with data:", networkData);
+    return axios.post(`${API_URL}/network/`, networkData);
+  },
+  updateNetwork: (networkId, networkData) => {
+    console.log("Updating network:", networkId);
+    return axios.put(`${API_URL}/network/${networkId}`, networkData);
+  },
+  deleteNetwork: (networkId) => {
+    console.log("Deleting network:", networkId);
+    return axios.delete(`${API_URL}/network/${networkId}`);
+  },
+  getNetworkCytoscape: (networkId) => {
+    console.log("Getting network in Cytoscape format:", networkId);
+    return axios.get(`${API_URL}/network/${networkId}/cytoscape`);
+  },
+  uploadGraphML: (file, conversationId = null) => {
+    const formData = new FormData();
+    formData.append("file", file);
 
-// Network Chat API endpoints have been removed as part of migration to MCP-based design
-export const networkChatAPI = {};
+    let url = `${API_URL}/network/upload`;
+    if (conversationId) {
+      url = `${API_URL}/network/${conversationId}/upload`;
+    }
+    
+    console.log(`Uploading GraphML to ${url}`);
+    return axios.post(url, formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+  },
+  // プロキシ経由の古い関数は仕様書に準拠するため削除されました
+};
+
+// Network Chat API endpoints
+export const networkChatAPI = {
+  getConversations: () => {
+    console.log("Getting all conversations");
+    return axios.get(`${API_URL}/chat/conversations`);
+  },
+  getMessages: (conversationId) => {
+    console.log("Getting messages for conversation:", conversationId);
+    return axios.get(`${API_URL}/chat/conversations/${conversationId}/messages`);
+  },
+  sendMessage: (conversationId, message) => {
+    console.log("Sending message to conversation:", conversationId, message);
+    return axios.post(`${API_URL}/chat/conversations/${conversationId}/messages`, {
+      content: message,
+      role: "user"
+    });
+  },
+  createConversation: (title = "New Conversation") => {
+    console.log("Creating new conversation with title:", title);
+    return axios.post(`${API_URL}/chat/conversations`, { title });
+  },
+  deleteConversation: (conversationId) => {
+    console.log("Deleting conversation:", conversationId);
+    return axios.delete(`${API_URL}/chat/conversations/${conversationId}`);
+  },
+  processChatMessage: (message) => {
+    console.log("Processing chat message via API:", message);
+    // APIサーバーを経由してチャットメッセージを処理
+    return axios.post(`${API_URL}/chat/process`, { message });
+  }
+};
