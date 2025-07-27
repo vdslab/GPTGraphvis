@@ -821,52 +821,69 @@ const useNetworkStore = create((set, get) => ({
   uploadNetworkFile: async (file) => {
     set({ isLoading: true, error: null });
     try {
-      // chatStoreから現在のconversationIdを取得
       const conversationId = useChatStore.getState().currentConversationId;
-      
-      console.log(`Uploading file for conversation: ${conversationId}`);
+      console.log(`Uploading file. Conversation ID: ${conversationId}`);
 
+      // networkAPIのuploadGraphMLを呼び出す
       const response = await networkAPI.uploadGraphML(file, conversationId);
       const result = response.data;
 
-      if (result && result.network_id && result.conversation_id) {
-        console.log("File uploaded successfully, new network and conversation created:", result);
+      console.log("Upload response from API:", result);
 
-        // 新しい会話とネットワークのデータをストアに設定
+      // 成功時のレスポンス形式を厳密にチェック
+      if (result && result.network_id && result.conversation_id) {
+        console.log("File uploaded successfully. New data:", result);
+
+        // 新しい会話IDをストアに設定
         useChatStore.getState().setCurrentConversationId(result.conversation_id);
+        
+        // チャットに成功メッセージを追加
         useChatStore.getState().addMessage({
           role: "assistant",
-          content: `新しいネットワーク「${file.name}」が作成されました。`,
+          content: `ファイル "${file.name}" が正常にアップロードされ、新しいネットワークが作成されました。`,
           timestamp: new Date().toISOString(),
         });
-        
-        // Cytoscapeデータを取得してグラフを更新
+
+        // 新しく作成されたネットワークのデータを取得してグラフを更新
         const cytoscapeResponse = await networkAPI.getNetworkCytoscape(result.network_id);
         const cytoData = cytoscapeResponse.data;
 
-        set({
-          nodes: cytoData.elements.nodes.map(n => n.data),
-          edges: cytoData.elements.edges.map(e => e.data),
-          positions: cytoData.elements.nodes.map(n => ({...n.data, ...n.position})),
-          isLoading: false,
-          error: null,
-          initialLoadComplete: true,
-        });
-
-        return { success: true };
+        if (cytoData && cytoData.elements) {
+            set({
+                nodes: cytoData.elements.nodes.map(n => n.data),
+                edges: cytoData.elements.edges.map(e => e.data),
+                positions: cytoData.elements.nodes.map(n => ({ ...n.data, ...n.position })),
+                isLoading: false,
+                error: null,
+                initialLoadComplete: true,
+            });
+            return { success: true };
+        } else {
+            throw new Error("Failed to retrieve valid Cytoscape data after upload.");
+        }
       } else {
-        throw new Error(result.detail || "Failed to upload file");
+        // APIからのエラーメッセージを優先的に使用
+        const errorMessage = result.detail || "Unknown error during file upload process.";
+        console.error("File upload failed:", errorMessage);
+        throw new Error(errorMessage);
       }
     } catch (error) {
-      console.error("Failed to upload network file:", error);
-      const errorMessage = error.response?.data?.detail || error.message || "Failed to upload network file";
+      // エラーオブジェクトから詳細なメッセージを抽出
+      const errorMessage =
+        error.response?.data?.detail || // FastAPIからの詳細エラー
+        error.message || // 一般的なJavaScriptエラー
+        "An unknown error occurred during file upload.";
+
+      console.error("Caught error in uploadNetworkFile:", errorMessage);
+      
       set({
         isLoading: false,
-        error: errorMessage,
+        error: errorMessage, // ストアに詳細なエラーメッセージを保存
       });
+
       return {
         success: false,
-        error: errorMessage,
+        error: errorMessage, // 呼び出し元に詳細なエラーメッセージを返す
       };
     }
   },

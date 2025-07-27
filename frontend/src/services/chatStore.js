@@ -8,6 +8,11 @@ const useChatStore = create((set, get) => ({
   isProcessing: false,
   error: null,
   typingTimeout: null,
+  currentConversationId: null, // Add this line
+
+  setCurrentConversationId: (conversationId) => {
+    set({ currentConversationId: conversationId });
+  },
 
   // Parse and execute network operations from chat messages
   executeNetworkOperation: async (message) => {

@@ -42,18 +42,14 @@ services:
   frontend:
     build:
       context: ./frontend
-      no_cache: true
     volumes:
       - ./frontend:/app
       - /app/node_modules
-      - /app/build
     ports:
       - "3000:3000"
     depends_on:
       - api
       - networkx-mcp
-    environment:
-      - NODE_ENV=production
 
 volumes:
   postgres_data:

@@ -258,38 +258,7 @@ const NetworkChatPage = () => {
         }
 
         try {
-          // networkAPIを使用してサンプルネットワークを読み込む
-          console.log("NetworkChatPage: Loading sample network via API");
-          const response = await networkAPI.getSampleNetwork();
-          const result = response.data;
-          
-          if (result && result.success) {
-            console.log("NetworkChatPage: Sample network loaded successfully via MCP client");
-            
-            // 状態を直接更新 - 重要: 他の関数が呼び出されないようにするため、完全な状態を一度に設定
-            useNetworkStore.setState({
-              nodes: result.nodes || [],
-              edges: result.edges || [],
-              positions: result.nodes || [], // positionsとnodesを同じにする
-              layout: result.layout || "spring",
-              isLoading: false,
-              error: null,
-              // 以下のフラグを追加して、他の関数が不必要に呼び出されないようにする
-              initialLoadComplete: true
-            });
-            
-            // 更新後の状態を確認 - 直接storeから取得して確実に最新の状態を確認
-            const currentState = useNetworkStore.getState();
-            console.log("NetworkChatPage: State after sample network loading:", {
-              nodesLength: currentState.nodes?.length || 0,
-              edgesLength: currentState.edges?.length || 0,
-              positionsLength: currentState.positions?.length || 0,
-              isLoading: currentState.isLoading,
-              initialLoadComplete: currentState.initialLoadComplete
-            });
-            
-            return;
-          }
+          // networkAPI.getSampleNetworkは削除されたため、このブロックは実行されない
         } catch (mcpError) {
           console.error("NetworkChatPage: Error loading sample network via MCP client:", mcpError);
           console.log("NetworkChatPage: Falling back to direct sample network generation");
