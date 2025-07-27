@@ -49,18 +49,8 @@ const useChatStore = create((set, get) => ({
           const networkStore = useNetworkStore.getState();
 
           if (type === 'calculate_centrality' && updateData.centrality_values) {
-            // Update node sizes based on centrality
-            const { centrality_values } = updateData;
-            const currentPositions = networkStore.positions;
-            
-            const newPositions = currentPositions.map(node => {
-              const centralityValue = centrality_values[node.id] || 0;
-              // Scale size: base size 5, max additional size 15
-              const newSize = 5 + (centralityValue * 15);
-              return { ...node, size: newSize };
-            });
-            
-            networkStore.setPositions(newPositions);
+            // Use the new action in networkStore to apply centrality
+            networkStore.applyCentralityValues(updateData.centrality_values, updateData.centrality_type);
             
           } else if (type === 'change_layout' && updateData.positions) {
             // Update node positions based on new layout

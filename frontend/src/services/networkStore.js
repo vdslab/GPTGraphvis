@@ -39,6 +39,11 @@ const useNetworkStore = create((set, get) => ({
     set({ layout });
   },
 
+  // Set positions
+  setPositions: (positions) => {
+    set({ positions });
+  },
+
   // Set layout parameters
   setLayoutParams: (layoutParams) => {
     set({ layoutParams });
@@ -804,9 +809,29 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
-  // Clear all data
-  clearData: () => {
+  // Apply centrality values to nodes
+  applyCentralityValues: (centralityValues, centralityType) => {
+    const maxValue = Math.max(...Object.values(centralityValues), 1);
+    const updatedPositions = get().positions.map((node) => {
+      const value = centralityValues[node.id] || 0;
+      // Scale size from 5 to 20
+      const normalizedSize = 5 + (value / maxValue) * 15;
+      return {
+        ...node,
+        size: normalizedSize,
+        color: getCentralityColor(value, maxValue),
+      };
+    });
     set({
+      positions: updatedPositions,
+      centrality: centralityValues,
+      centralityType,
+    });
+  },
+ 
+   // Clear all data
+   clearData: () => {
+     set({
       nodes: [],
       edges: [],
       positions: [],
