@@ -381,3 +381,35 @@ async def proxy_get_request(
             return response.json()
     except httpx.HTTPError as e:
         raise HTTPException(status_code=500, detail=f"Error forwarding request to NetworkXMCP: {str(e)}")
+
+async def convert_graphml_through_proxy(graphml_content: str) -> str:
+    """
+    Helper function to call the NetworkXMCP convert_graphml tool.
+    """
+    tool_name = "convert_graphml"
+    arguments = {"graphml_content": graphml_content}
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.post(
+                f"{NETWORKX_MCP_URL}/tools/{tool_name}",
+                json=arguments,
+                timeout=30.0
+            )
+            response.raise_for_status()
+            result = response.json()
+
+            if result.get("success"):
+                return result.get("graphml_content")
+            else:
+                error_detail = result.get("error", "Unknown error during GraphML conversion")
+                raise HTTPException(status_code=400, detail=error_detail)
+
+        except httpx.HTTPStatusError as e:
+            # Log the error and response content if available
+            error_content = e.response.text
+            print(f"Error from NetworkXMCP service: {error_content}")
+            raise HTTPException(status_code=e.response.status_code, detail=f"Error from NetworkXMCP service: {error_content}")
+        except Exception as e:
+            print(f"An unexpected error occurred while contacting NetworkXMCP: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"An unexpected error occurred while contacting NetworkXMCP: {str(e)}")

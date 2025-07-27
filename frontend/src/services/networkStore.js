@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { networkAPI } from "./api";
+import useChatStore from "./chatStore";
 
 // Helper function to generate colors based on centrality values
 const getCentralityColor = (value, maxValue) => {
@@ -817,173 +818,52 @@ const useNetworkStore = create((set, get) => ({
   uploadNetworkFile: async (file) => {
     set({ isLoading: true, error: null });
     try {
-      console.log("Uploading network file using GraphML API:", file.name);
+      // chatStoreから現在のconversationIdを取得
+      const conversationId = useChatStore.getState().currentConversationId;
+      
+      console.log(`Uploading file for conversation: ${conversationId}`);
 
-      // For GraphML files, use direct import
-      if (file.name.toLowerCase().endsWith(".graphml")) {
-        // Read file as text
-        const fileReader = new FileReader();
-        const fileContentPromise = new Promise((resolve, reject) => {
-          fileReader.onload = (e) => {
-            resolve(e.target.result);
-          };
-          fileReader.onerror = () => {
-            reject(new Error("Failed to read file"));
-          };
-          fileReader.readAsText(file);
+      const response = await networkAPI.uploadGraphML(file, conversationId);
+      const result = response.data;
+
+      if (result && result.network_id && result.conversation_id) {
+        console.log("File uploaded successfully, new network and conversation created:", result);
+
+        // 新しい会話とネットワークのデータをストアに設定
+        useChatStore.getState().setCurrentConversationId(result.conversation_id);
+        useChatStore.getState().addMessage({
+          role: "assistant",
+          content: `新しいネットワーク「${file.name}」が作成されました。`,
+          timestamp: new Date().toISOString(),
         });
-
-        const graphmlContent = await fileContentPromise;
-
-        // First convert to standard GraphML format
-        const convertResponse = await networkAPI.convertGraphML(graphmlContent);
-        // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
-        const convertResult = convertResponse.data.result;
-
-        if (
-          !convertResult ||
-          !convertResult.success ||
-          !convertResult.graphml_content
-        ) {
-          // 詳細なエラーメッセージを表示
-          const errorMessage = convertResult?.error || "Failed to convert GraphML to standard format";
-          console.error("GraphML conversion error:", errorMessage);
-          
-          // ユーザーフレンドリーなエラーメッセージを作成
-          let userMessage = "GraphMLファイルの変換に失敗しました。";
-          
-          if (errorMessage.includes("missing <graph> element")) {
-            userMessage += " ファイルに<graph>要素が含まれていません。";
-          } else if (errorMessage.includes("Invalid XML")) {
-            userMessage += " XMLの構文が無効です。";
-          } else if (errorMessage.includes("namespace")) {
-            userMessage += " 名前空間宣言が不足しています。";
-          }
-          
-          userMessage += " 正しい形式のGraphMLファイルを使用してください。";
-          throw new Error(userMessage);
-        }
         
-        // ファイルが修復された場合はユーザーに通知
-        if (convertResult.fixed) {
-          console.log("GraphML file was automatically fixed");
-          // チャットにメッセージを追加（useChatStoreのaddMessageを使用）
-          const chatStore = window.chatStore;
-          if (chatStore && chatStore.addMessage) {
-            chatStore.addMessage({
-              role: "assistant",
-              content: "GraphMLファイルの形式に問題がありましたが、自動的に修復されました。",
-              timestamp: new Date().toISOString(),
-            });
-          }
-        }
+        // Cytoscapeデータを取得してグラフを更新
+        const cytoscapeResponse = await networkAPI.getNetworkCytoscape(result.network_id);
+        const cytoData = cytoscapeResponse.data;
 
-        // Import the standardized GraphML
-        const importResponse = await networkAPI.importGraphML(
-          convertResult.graphml_content,
-        );
-        // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
-        const importResult = importResponse.data.result;
+        set({
+          nodes: cytoData.elements.nodes.map(n => n.data),
+          edges: cytoData.elements.edges.map(e => e.data),
+          positions: cytoData.elements.nodes.map(n => ({...n.data, ...n.position})),
+          isLoading: false,
+          error: null,
+          initialLoadComplete: true,
+        });
 
-        if (importResult && importResult.success) {
-          console.log("GraphML file imported successfully:", importResult);
-
-          // Update network store with data from response
-          set({
-            nodes: importResult.nodes || [],
-            edges: importResult.edges || [],
-            positions: importResult.nodes || [], // positionsとnodesを同じにする
-            isLoading: false,
-            error: null,
-            initialLoadComplete: true // 初期ロードが完了したことを示すフラグを設定
-          });
-
-          // 更新後の状態を確認
-          const updatedState = get();
-          console.log("State after GraphML import:", {
-            nodesLength: updatedState.nodes?.length || 0,
-            edgesLength: updatedState.edges?.length || 0,
-            positionsLength: updatedState.positions?.length || 0,
-            initialLoadComplete: updatedState.initialLoadComplete
-          });
-
-          return {
-            success: true,
-            nodes: importResult.nodes || [],
-            edges: importResult.edges || []
-          };
-        } else {
-          throw new Error(
-            importResult?.error || "Failed to import GraphML file",
-          );
-        }
+        return { success: true };
       } else {
-        // For other file types, use the traditional upload method and convert
-        // Read file as base64
-        const fileReader = new FileReader();
-        const fileContentPromise = new Promise((resolve, reject) => {
-          fileReader.onload = (e) => {
-            // Get base64 content without the prefix (e.g., "data:application/xml;base64,")
-            const base64Content = e.target.result.split(",")[1];
-            resolve(base64Content);
-          };
-          fileReader.onerror = () => {
-            reject(new Error("Failed to read file"));
-          };
-          fileReader.readAsDataURL(file);
-        });
-
-        const fileContent = await fileContentPromise;
-
-        // Use API to upload network file
-        const response = await networkAPI.useTool("upload_network_file", {
-          file_content: fileContent,
-          file_name: file.name,
-          file_type: file.type,
-        });
-        const result = response.data.result;
-
-        if (result && result.success) {
-          console.log("Network file uploaded successfully:", result);
-
-          // Update network store with data from response
-          set({
-            nodes: result.nodes || [],
-            edges: result.edges || [],
-            positions: result.nodes || [], // positionsとnodesを同じにする
-            isLoading: false,
-            error: null,
-            initialLoadComplete: true // 初期ロードが完了したことを示すフラグを設定
-          });
-
-          // 更新後の状態を確認
-          const updatedState = get();
-          console.log("State after file upload:", {
-            nodesLength: updatedState.nodes?.length || 0,
-            edgesLength: updatedState.edges?.length || 0,
-            positionsLength: updatedState.positions?.length || 0,
-            initialLoadComplete: updatedState.initialLoadComplete
-          });
-
-          return {
-            success: true,
-            nodes: result.nodes || [],
-            edges: result.edges || []
-          };
-        } else {
-          throw new Error(result?.error || "Failed to upload network file");
-        }
+        throw new Error(result.detail || "Failed to upload file");
       }
     } catch (error) {
       console.error("Failed to upload network file:", error);
-
+      const errorMessage = error.response?.data?.detail || error.message || "Failed to upload network file";
       set({
         isLoading: false,
-        error: error.message || "Failed to upload network file",
+        error: errorMessage,
       });
       return {
         success: false,
-        error: error.message || "Failed to upload network file"
+        error: errorMessage,
       };
     }
   },

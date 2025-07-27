@@ -14,6 +14,7 @@ import models
 import schemas
 import auth
 from database import get_db
+from . import proxy
 
 router = APIRouter(
     prefix="/network",
@@ -51,10 +52,17 @@ async def get_network_cytoscape_format(
     try:
         G = nx.read_graphml(io.StringIO(db_network.graphml_content))
         
-        nodes = [{"data": {"id": str(n), **G.nodes[n]}} for n in G.nodes()]
+        # 位置情報もCytoscape形式に含める
+        nodes = []
+        for n, data in G.nodes(data=True):
+            node_data = {"data": {"id": str(n), **data}}
+            if 'x' in data and 'y' in data:
+                node_data["position"] = {"x": data['x'], "y": data['y']}
+            nodes.append(node_data)
+            
         edges = [{"data": {"source": str(u), "target": str(v), **d}} for u, v, d in G.edges(data=True)]
         
-        return {"elements": nodes + edges}
+        return {"elements": {"nodes": nodes, "edges": edges}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing GraphML: {str(e)}")
 
@@ -74,7 +82,7 @@ async def export_network_graphml(
         headers={"Content-Disposition": f"attachment; filename=network_{network_id}.graphml"}
     )
 
-@router.post("/upload", response_model=schemas.Conversation)
+@router.post("/upload", response_model=Dict[str, int])
 async def upload_new_network(
     file: UploadFile = File(...),
     current_user: models.User = Depends(auth.get_current_active_user),
@@ -82,79 +90,87 @@ async def upload_new_network(
 ):
     """
     Upload a GraphML file to create a new conversation and network.
+    The file is first sent to NetworkXMCP for normalization.
     """
     if not file.filename.endswith(".graphml"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .graphml file.")
     
     try:
-        graphml_content = await file.read()
-        
-        # Validate GraphML content
-        try:
-            G = nx.read_graphml(io.StringIO(graphml_content.decode("utf-8")))
-            print(f"Successfully validated GraphML: Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
-        except Exception as validate_error:
-            print(f"Error validating GraphML: {str(validate_error)}")
-            raise HTTPException(status_code=400, detail=f"Invalid GraphML content: {str(validate_error)}")
-        
-        # Create a new conversation
-        try:
-            db_conversation = models.Conversation(
-                title=f"Conversation for {file.filename}",
-                user_id=current_user.id
-            )
-            db.add(db_conversation)
-            db.commit()
-            db.refresh(db_conversation)
-            print(f"Created conversation with ID: {db_conversation.id}")
-        except Exception as db_error:
-            print(f"Error creating conversation: {str(db_error)}")
-            raise HTTPException(status_code=500, detail=f"Error creating conversation: {str(db_error)}")
-        
-        # Create the associated network
-        try:
-            db_network = models.Network(
-                name=file.filename,
-                conversation_id=db_conversation.id,
-                graphml_content=graphml_content.decode("utf-8")
-            )
-            db.add(db_network)
-            db.commit()
-            db.refresh(db_conversation) # Refresh to get the network relationship loaded
-            print(f"Created network for conversation ID: {db_conversation.id}")
-        except Exception as network_error:
-            print(f"Error creating network: {str(network_error)}")
-            # Rollback conversation if network creation fails
-            db.delete(db_conversation)
-            db.commit()
-            raise HTTPException(status_code=500, detail=f"Error creating network: {str(network_error)}")
-        
-        return db_conversation
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Unexpected error in upload_new_network: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        graphml_content_bytes = await file.read()
+        graphml_content_str = graphml_content_bytes.decode("utf-8")
 
-@router.post("/{network_id}/upload", response_model=schemas.Network)
+        # Call NetworkXMCP to convert/normalize the GraphML
+        normalized_graphml_str = await proxy.convert_graphml_through_proxy(graphml_content_str)
+
+        # Create a new conversation
+        db_conversation = models.Conversation(
+            title=f"Conversation for {file.filename}",
+            user_id=current_user.id
+        )
+        db.add(db_conversation)
+        db.commit()
+        db.refresh(db_conversation)
+
+        # Create the associated network with the normalized content
+        db_network = models.Network(
+            name=file.filename,
+            conversation_id=db_conversation.id,
+            graphml_content=normalized_graphml_str
+        )
+        db.add(db_network)
+        db.commit()
+        db.refresh(db_network)
+
+        return {"conversation_id": db_conversation.id, "network_id": db_network.id}
+
+    except HTTPException as e:
+        # Re-raise HTTPException to preserve status code and detail
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")
+
+
+@router.post("/{conversation_id}/upload", response_model=schemas.Network)
 async def upload_and_overwrite_network(
-    network_id: int,
+    conversation_id: int,
     file: UploadFile = File(...),
     current_user: models.User = Depends(auth.get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Upload a GraphML file to overwrite an existing network.
+    Upload a GraphML file to overwrite an existing network associated with a conversation.
     """
     if not file.filename.endswith(".graphml"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .graphml file.")
+    
+    # Find the conversation and verify ownership
+    db_conversation = db.query(models.Conversation).filter(
+        models.Conversation.id == conversation_id,
+        models.Conversation.user_id == current_user.id
+    ).first()
+
+    if not db_conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    db_network = db_conversation.network
+    if not db_network:
+        raise HTTPException(status_code=404, detail="Network not found for this conversation")
+
+    try:
+        graphml_content_bytes = await file.read()
+        graphml_content_str = graphml_content_bytes.decode("utf-8")
+
+        # Call NetworkXMCP to convert/normalize the GraphML
+        normalized_graphml_str = await proxy.convert_graphml_through_proxy(graphml_content_str)
+
+        # Update the network content
+        db_network.graphml_content = normalized_graphml_str
+        db_network.name = file.filename
+        db.commit()
+        db.refresh(db_network)
         
-    db_network = get_network_for_user(db, network_id, current_user.id)
-    
-    graphml_content = await file.read()
-    db_network.graphml_content = graphml_content.decode("utf-8")
-    db_network.name = file.filename
-    db.commit()
-    db.refresh(db_network)
-    
-    return db_network
+        return db_network
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"An unexpected error occurred: {str(e)}")

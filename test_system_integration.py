@@ -262,5 +262,43 @@ class SystemIntegrationTest(unittest.TestCase):
         self.assertIn("status", data["result"], "No status in result")
         self.assertEqual(data["result"]["status"], "ok", "Status is not ok")
 
+    def test_upload_graphml_and_verify(self):
+        """GraphMLファイルのアップロードと検証のテスト"""
+        token = self.get_auth_token()
+        
+        # サンプルGraphMLファイルを開く
+        file_path = os.path.join(os.path.dirname(__file__), 'fixed_random_graph_25_nodes.graphml')
+        with open(file_path, 'rb') as f:
+            files = {'file': ('fixed_random_graph_25_nodes.graphml', f, 'application/xml')}
+            
+            # /network/upload エンドポイントにファイルをアップロード
+            response = requests.post(
+                f"{API_URL}/network/upload",
+                headers={"Authorization": f"Bearer {token}"},
+                files=files
+            )
+        
+        # レスポンスを検証
+        self.assertEqual(response.status_code, 200, f"Failed to upload GraphML file: {response.text}")
+        data = response.json()
+        self.assertIn("conversation_id", data)
+        self.assertIn("network_id", data)
+        
+        network_id = data["network_id"]
+        
+        # アップロードされたネットワークがCytoscape形式で取得できるか確認
+        response = requests.get(
+            f"{API_URL}/network/{network_id}/cytoscape",
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        self.assertEqual(response.status_code, 200, f"Failed to get Cytoscape data: {response.text}")
+        
+        cyto_data = response.json()
+        self.assertIn("elements", cyto_data)
+        self.assertIn("nodes", cyto_data["elements"])
+        self.assertIn("edges", cyto_data["elements"])
+        self.assertGreater(len(cyto_data["elements"]["nodes"]), 0, "No nodes found in the uploaded graph")
+        self.assertGreater(len(cyto_data["elements"]["edges"]), 0, "No edges found in the uploaded graph")
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
