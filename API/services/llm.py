@@ -5,6 +5,7 @@ Supports multiple providers like Google Gemini and OpenAI.
 
 import os
 import json
+import httpx
 from typing import List, Dict, Any
 
 # --- Provider Selection ---
@@ -33,7 +34,8 @@ elif LLM_PROVIDER == "openai":
         raise ValueError("LLM_PROVIDER is 'openai', but OPENAI_API_KEY environment variable is not set.")
     try:
         from openai import OpenAI
-        openai_client = OpenAI() # API key is read from OPENAI_API_KEY env var
+        # Explicitly pass a default httpx client to avoid issues with proxy arguments
+        openai_client = OpenAI(http_client=httpx.Client())
     except ImportError:
         print("OpenAI SDK not installed. Please run 'pip install openai'")
         openai_client = None

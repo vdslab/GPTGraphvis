@@ -34,16 +34,23 @@ class ConnectionManager:
             await connection.send_json(message)
 
 # データベースの接続を待機
-for i in range(10):
+max_retries = 15
+for i in range(max_retries):
     try:
-        with engine.connect():
+        with engine.connect() as conn:
+            # 接続テスト
+            conn.execute(sqlalchemy.text("SELECT 1"))
             print(f"Database connection successful on attempt {i+1}")
             break
-    except sqlalchemy.exc.OperationalError:
-        if i < 9:
-            time.sleep(3)
+    except sqlalchemy.exc.OperationalError as e:
+        print(f"Attempt {i+1}/{max_retries} failed: {e}")
+        if i < max_retries - 1:
+            # 指数バックオフで待機時間を徐々に増やす
+            wait_time = min(2 ** i, 30)  # 最大30秒まで
+            print(f"Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
         else:
-            print(f"Failed to connect to database after 10 attempts.")
+            print(f"Failed to connect to database after {max_retries} attempts.")
 
 # データベーステーブルの作成
 try:
