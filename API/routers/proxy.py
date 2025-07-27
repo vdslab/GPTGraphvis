@@ -198,8 +198,10 @@ async def proxy_tool_request(
                 # フロントエンドが期待するレスポンス形式に変換
                 if "success" in response_json and response_json["success"]:
                     return {
-                        "success": True,
-                        "graphml_content": response_json.get("graphml_content", "")
+                        "result": {
+                            "success": True,
+                            "graphml_content": response_json.get("graphml_content", "")
+                        }
                     }
                 else:
                     # エラーレスポンスの場合
@@ -231,9 +233,11 @@ async def proxy_tool_request(
                         if "success" in retry_json and retry_json["success"]:
                             print(f"Proxy: Successfully fixed and converted GraphML")
                             return {
-                                "success": True,
-                                "graphml_content": retry_json.get("graphml_content", ""),
-                                "fixed": True
+                                "result": {
+                                    "success": True,
+                                    "graphml_content": retry_json.get("graphml_content", ""),
+                                    "fixed": True
+                                }
                             }
                     except Exception as fix_error:
                         print(f"Proxy: Failed to fix GraphML: {fix_error}")
@@ -286,18 +290,22 @@ async def proxy_tool_request(
                         
                         print(f"Proxy: Successfully generated minimal GraphML")
                         return {
-                            "success": True,
-                            "graphml_content": minimal_graphml,
-                            "fixed": True,
-                            "message": "元のGraphMLの変換に失敗しましたが、代わりにサンプルネットワークを生成しました。"
+                            "result": {
+                                "success": True,
+                                "graphml_content": minimal_graphml,
+                                "fixed": True,
+                                "message": "元のGraphMLの変換に失敗しましたが、代わりにサンプルネットワークを生成しました。"
+                            }
                         }
                     except Exception as minimal_error:
                         print(f"Proxy: Failed to generate minimal GraphML: {minimal_error}")
                         
                     # すべての修復に失敗した場合は元のエラーを返す
                     return {
-                        "success": False,
-                        "error": error_msg
+                        "result": {
+                            "success": False,
+                            "error": error_msg
+                        }
                     }
             elif tool_name == "import_graphml":
                 # import_graphmlエンドポイントのレスポンス形式を調整

@@ -451,7 +451,11 @@ class MCPClient {
    */
   async exportNetworkAsGraphML() {
     return networkAPI.exportNetworkAsGraphML()
-      .then(response => response.data.result);
+      .then(response => {
+        // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
+        console.log("Export GraphML response:", response.data);
+        return response.data.result;
+      });
   }
 
   /**
@@ -462,7 +466,11 @@ class MCPClient {
    */
   async importGraphML(graphmlContent) {
     return networkAPI.importGraphML(graphmlContent)
-      .then(response => response.data.result);
+      .then(response => {
+        // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
+        console.log("Import GraphML response:", response.data);
+        return response.data.result;
+      });
   }
 
   /**
@@ -473,7 +481,11 @@ class MCPClient {
    */
   async convertGraphML(graphmlContent) {
     return networkAPI.convertGraphML(graphmlContent)
-      .then(response => response.data.result);
+      .then(response => {
+        // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
+        console.log("GraphML conversion response:", response.data);
+        return response.data.result;
+      });
   }
 
   /**

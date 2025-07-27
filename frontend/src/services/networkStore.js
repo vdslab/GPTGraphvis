@@ -707,6 +707,7 @@ const useNetworkStore = create((set, get) => ({
         graphmlContent,
         centralityType,
       );
+      // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
       const result = centralityResponse.data.result;
 
       if (result && result.success && result.graphml_content) {
@@ -836,7 +837,8 @@ const useNetworkStore = create((set, get) => ({
 
         // First convert to standard GraphML format
         const convertResponse = await networkAPI.convertGraphML(graphmlContent);
-        const convertResult = convertResponse.data;
+        // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
+        const convertResult = convertResponse.data.result;
 
         if (
           !convertResult ||
@@ -880,6 +882,7 @@ const useNetworkStore = create((set, get) => ({
         const importResponse = await networkAPI.importGraphML(
           convertResult.graphml_content,
         );
+        // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
         const importResult = importResponse.data.result;
 
         if (importResult && importResult.success) {
@@ -1047,6 +1050,7 @@ const useNetworkStore = create((set, get) => ({
 
       // Use networkAPI to export network as GraphML
       const response = await networkAPI.exportNetworkAsGraphML();
+      // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
       const result = response.data.result;
 
       if (result && result.success) {
@@ -1098,6 +1102,7 @@ const useNetworkStore = create((set, get) => ({
         propertyValue,
         propertyMapping,
       );
+      // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
       const result = visualPropsResponse.data.result;
 
       if (result && result.success && result.graphml_content) {
