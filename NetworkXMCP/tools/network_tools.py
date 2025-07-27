@@ -187,6 +187,78 @@ def parse_graphml_string(graphml_content):
             "error": f"Error parsing GraphML string: {str(e)}"
         }
 
+def fix_graphml_structure(graphml_content):
+    """
+    GraphMLの構造を修正する
+    
+    Args:
+        graphml_content (str): GraphML文字列
+        
+    Returns:
+        str: 修正されたGraphML文字列
+    """
+    # デバッグログ
+    logger.debug("Fixing GraphML structure")
+    
+    # 全体的な修正作業をトライ
+    try:
+        # XMLヘッダーが欠けている場合は追加
+        if "<?xml" not in graphml_content:
+            logger.debug("Adding XML header")
+            graphml_content = '<?xml version="1.0" encoding="UTF-8"?>\n' + graphml_content
+        
+        # 名前空間宣言が欠けている場合は追加
+        if "<graphml" in graphml_content and "xmlns=" not in graphml_content:
+            logger.debug("Adding namespace declarations")
+            graphml_content = graphml_content.replace(
+                "<graphml", 
+                '<graphml xmlns="http://graphml.graphdrawing.org/xmlns" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://graphml.graphdrawing.org/xmlns http://graphml.graphdrawing.org/xmlns/1.0/graphml.xsd"'
+            )
+        
+        # <graph>要素にedgedefault属性が欠けている場合は追加
+        if "<graph" in graphml_content and "edgedefault=" not in graphml_content:
+            logger.debug("Adding edgedefault attribute to graph element")
+            graphml_content = graphml_content.replace(
+                "<graph", 
+                '<graph edgedefault="undirected"'
+            )
+        
+        # 不正なXML文字を削除
+        import re
+        # XMLの不正な文字を削除するパターン
+        # XMLで使用できない文字のパターン
+        illegal_xml_chars = re.compile(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]')
+        if illegal_xml_chars.search(graphml_content):
+            logger.debug("Removing illegal XML characters")
+            graphml_content = illegal_xml_chars.sub('', graphml_content)
+        
+        # XMLの閉じタグが不完全な場合の修正を試みる
+        # graphmlタグの確認
+        if "<graphml" in graphml_content and "</graphml>" not in graphml_content:
+            logger.debug("Adding missing </graphml> tag")
+            graphml_content += "\n</graphml>"
+        
+        # graphタグの確認
+        if "<graph" in graphml_content and "</graph>" not in graphml_content:
+            # </graphml>の前に</graph>を挿入
+            if "</graphml>" in graphml_content:
+                logger.debug("Adding missing </graph> tag before </graphml>")
+                graphml_content = graphml_content.replace("</graphml>", "</graph>\n</graphml>")
+            else:
+                logger.debug("Adding missing </graph> tag at the end")
+                graphml_content += "\n</graph>"
+        
+        # データノードの修正 - 自己閉じタグに変換
+        if "<data " in graphml_content and "</data>" not in graphml_content:
+            logger.debug("Fixing data elements to self-closing tags if needed")
+            # <data key="xxx"></data> -> <data key="xxx"/>
+            graphml_content = re.sub(r'<data key="([^"]+)"></data>', r'<data key="\1"/>', graphml_content)
+    except Exception as e:
+        logger.error(f"Error while fixing GraphML structure: {e}")
+        # エラーが発生しても元のコンテンツを返す
+    
+    return graphml_content
+
 def convert_to_standard_graphml(graphml_content):
     """
     あらゆるGraphMLデータを標準形式に変換する
@@ -198,9 +270,66 @@ def convert_to_standard_graphml(graphml_content):
         dict: 処理結果を含む辞書
     """
     try:
-        # Parse the GraphML content
-        content_io = io.BytesIO(graphml_content.encode('utf-8'))
-        G = nx.read_graphml(content_io)
+        # デバッグ情報を記録
+        logger.debug(f"Converting GraphML content: {graphml_content[:100]}...")
+        
+        # 入力チェック
+        if not graphml_content or not isinstance(graphml_content, str):
+            logger.error("Invalid GraphML content: empty or not a string")
+            return {
+                "success": False,
+                "error": "Invalid GraphML content: empty or not a string"
+            }
+        
+        # 最小限のGraphML構造チェック
+        if "<graph" not in graphml_content:
+            logger.error("Invalid GraphML content: missing <graph> element")
+            return {
+                "success": False,
+                "error": "Invalid GraphML content: missing <graph> element. GraphML file must contain a <graph> element."
+            }
+        
+        # デバッグ情報を追加
+        logger.debug(f"GraphML content before fixing: {graphml_content[:500]}...")
+        
+        # GraphML構造を修正
+        fixed_graphml = fix_graphml_structure(graphml_content)
+        
+        # デバッグ情報を追加
+        logger.debug(f"GraphML content after fixing: {fixed_graphml[:500]}...")
+        
+        # Parse the GraphML content with better error handling
+        try:
+            content_io = io.BytesIO(fixed_graphml.encode('utf-8'))
+            G = nx.read_graphml(content_io)
+            logger.debug(f"Successfully parsed GraphML with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
+        except Exception as parse_error:
+            logger.error(f"Error parsing GraphML: {parse_error}")
+            # より詳細なエラー情報を提供
+            error_details = str(parse_error)
+            if "XML" in error_details:
+                # XMLエラーが発生した場合、さらに修正を試みる
+                try:
+                    logger.debug("Attempting additional XML fixes...")
+                    # XMLの基本構造を確認し修正
+                    if not fixed_graphml.strip().startswith('<?xml'):
+                        fixed_graphml = '<?xml version="1.0" encoding="UTF-8"?>\n' + fixed_graphml
+                    
+                    # 再度パースを試みる
+                    content_io = io.BytesIO(fixed_graphml.encode('utf-8'))
+                    G = nx.read_graphml(content_io)
+                    logger.debug(f"Successfully parsed GraphML after XML fixes with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
+                except Exception as second_parse_error:
+                    logger.error(f"Error parsing GraphML after XML fixes: {second_parse_error}")
+                    return {
+                        "success": False,
+                        "error": f"Invalid XML in GraphML file that could not be fixed: {error_details}"
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": f"Failed to parse GraphML: {error_details}"
+                }
         
         # 既存の属性を確認し、標準属性名へのマッピングを検出
         attribute_mapping = {
@@ -211,6 +340,7 @@ def convert_to_standard_graphml(graphml_content):
         }
         
         # 各ノードに標準属性を追加
+        logger.debug("Adding standard attributes to nodes")
         for node in G.nodes():
             node_str = str(node)
             node_attrs = G.nodes[node]
@@ -224,7 +354,10 @@ def convert_to_standard_graphml(graphml_content):
                         break
                 else:
                     # 代替属性が見つからない場合はノードIDを使用
-                    node_attrs['name'] = node_str
+                    node_attrs['name'] = f"Node {node_str}"
+            else:
+                # 既存の属性を文字列に変換
+                node_attrs['name'] = str(node_attrs['name'])
             
             # 色属性の処理
             if 'color' not in node_attrs:
@@ -236,6 +369,9 @@ def convert_to_standard_graphml(graphml_content):
                 else:
                     # 代替属性が見つからない場合はデフォルト色を使用
                     node_attrs['color'] = "#1d4ed8"  # Default color
+            else:
+                # 既存の属性を文字列に変換
+                node_attrs['color'] = str(node_attrs['color'])
             
             # サイズ属性の処理
             if 'size' not in node_attrs:
@@ -247,6 +383,9 @@ def convert_to_standard_graphml(graphml_content):
                 else:
                     # 代替属性が見つからない場合はデフォルトサイズを使用
                     node_attrs['size'] = "5.0"  # Default size
+            else:
+                # 既存の属性を文字列に変換
+                node_attrs['size'] = str(node_attrs['size'])
             
             # 説明属性の処理
             if 'description' not in node_attrs:
@@ -258,8 +397,54 @@ def convert_to_standard_graphml(graphml_content):
                 else:
                     # 代替属性が見つからない場合はデフォルト説明を使用
                     node_attrs['description'] = f"Node {node_str}"
+            else:
+                # 既存の属性を文字列に変換
+                node_attrs['description'] = str(node_attrs['description'])
+                
+            # 位置情報（x, y座標）の処理
+            # x座標の処理
+            if 'x' not in node_attrs:
+                # 代替属性を探す
+                for alt_attr in ['x', 'pos_x', 'position_x', 'coord_x', 'coordinate_x']:
+                    if alt_attr in node_attrs:
+                        node_attrs['x'] = str(node_attrs[alt_attr])
+                        break
+                else:
+                    # 代替属性が見つからない場合はランダムな位置を生成
+                    import random
+                    node_attrs['x'] = str(random.uniform(-1.0, 1.0))
+            else:
+                # 既存の属性を文字列に変換
+                node_attrs['x'] = str(node_attrs['x'])
+                
+            # y座標の処理
+            if 'y' not in node_attrs:
+                # 代替属性を探す
+                for alt_attr in ['y', 'pos_y', 'position_y', 'coord_y', 'coordinate_y']:
+                    if alt_attr in node_attrs:
+                        node_attrs['y'] = str(node_attrs[alt_attr])
+                        break
+                else:
+                    # 代替属性が見つからない場合はランダムな位置を生成
+                    import random
+                    node_attrs['y'] = str(random.uniform(-1.0, 1.0))
+            else:
+                # 既存の属性を文字列に変換
+                node_attrs['y'] = str(node_attrs['y'])
+        
+        # <key>要素を追加するためのリスト
+        key_elements = []
+        key_elements.append('<key id="d0" for="node" attr.name="name" attr.type="string"/>')
+        key_elements.append('<key id="d1" for="node" attr.name="size" attr.type="double"/>')
+        key_elements.append('<key id="d2" for="node" attr.name="color" attr.type="string"/>')
+        key_elements.append('<key id="d3" for="node" attr.name="description" attr.type="string"/>')
+        key_elements.append('<key id="d4" for="node" attr.name="x" attr.type="double"/>')
+        key_elements.append('<key id="d5" for="node" attr.name="y" attr.type="double"/>')
+        key_elements.append('<key id="d6" for="edge" attr.name="width" attr.type="string"/>')
+        key_elements.append('<key id="d7" for="edge" attr.name="color" attr.type="string"/>')
         
         # グラフレベルの属性を追加
+        logger.debug("Adding graph-level attributes")
         G.graph['node_default_size'] = "5.0"
         G.graph['node_default_color'] = "#1d4ed8"
         G.graph['edge_default_width'] = "1.0"
@@ -268,17 +453,136 @@ def convert_to_standard_graphml(graphml_content):
         G.graph['graph_format_type'] = "standardized_graphml"
         
         # エッジにも標準的な属性を追加
+        logger.debug("Adding standard attributes to edges")
         for u, v, data in G.edges(data=True):
             if 'width' not in data:
                 data['width'] = "1.0"
+            else:
+                # 既存の属性を文字列に変換
+                data['width'] = str(data['width'])
+                
             if 'color' not in data:
                 data['color'] = "#94a3b8"
+            else:
+                # 既存の属性を文字列に変換
+                data['color'] = str(data['color'])
         
         # 標準化されたGraphMLにエクスポート
-        output = io.BytesIO()
-        nx.write_graphml(G, output)
-        output.seek(0)
-        standardized_graphml = output.read().decode("utf-8")
+        try:
+            logger.debug("Exporting to standardized GraphML format")
+            # エクスポート前にノードとエッジの属性が文字列型であることを確認
+            for node, attrs in G.nodes(data=True):
+                for key, value in list(attrs.items()):
+                    if value is not None:
+                        try:
+                            attrs[key] = str(value)
+                        except Exception as e:
+                            logger.warning(f"属性変換エラー (ノード {node}, 属性 {key}): {e}")
+                            # 変換できない場合は安全な値に置き換え
+                            attrs[key] = f"Value-{key}"
+                        
+            for u, v, attrs in G.edges(data=True):
+                for key, value in list(attrs.items()):
+                    if value is not None:
+                        try:
+                            attrs[key] = str(value)
+                        except Exception as e:
+                            logger.warning(f"属性変換エラー (エッジ {u}-{v}, 属性 {key}): {e}")
+                            # 変換できない場合は安全な値に置き換え
+                            attrs[key] = f"Value-{key}"
+            
+            try:
+                output = io.BytesIO()
+                nx.write_graphml(G, output)
+                output.seek(0)
+                standardized_graphml = output.read().decode("utf-8")
+                logger.debug("Successfully exported standardized GraphML")
+            except Exception as write_error:
+                logger.error(f"GraphML書き込みエラー: {write_error}")
+                # 最小限のGraphMLを生成
+                minimal_graphml = '<?xml version="1.0" encoding="UTF-8"?>\n'
+                minimal_graphml += '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">\n'
+                minimal_graphml += '  <key id="d0" for="node" attr.name="name" attr.type="string"/>\n'
+                minimal_graphml += '  <key id="d1" for="node" attr.name="size" attr.type="string"/>\n'
+                minimal_graphml += '  <key id="d2" for="node" attr.name="color" attr.type="string"/>\n'
+                minimal_graphml += '  <key id="d3" for="node" attr.name="description" attr.type="string"/>\n'
+                minimal_graphml += '  <key id="d4" for="node" attr.name="x" attr.type="double"/>\n'
+                minimal_graphml += '  <key id="d5" for="node" attr.name="y" attr.type="double"/>\n'
+                minimal_graphml += '  <graph edgedefault="undirected">\n'
+                
+                # ノードを追加
+                for node, attrs in G.nodes(data=True):
+                    minimal_graphml += f'    <node id="{node}">\n'
+                    minimal_graphml += f'      <data key="d0">{attrs.get("name", f"Node {node}")}</data>\n'
+                    minimal_graphml += f'      <data key="d1">{attrs.get("size", "5.0")}</data>\n'
+                    minimal_graphml += f'      <data key="d2">{attrs.get("color", "#1d4ed8")}</data>\n'
+                    minimal_graphml += f'      <data key="d3">{attrs.get("description", f"Node {node}")}</data>\n'
+                    minimal_graphml += f'      <data key="d4">{attrs.get("x", "0.0")}</data>\n'
+                    minimal_graphml += f'      <data key="d5">{attrs.get("y", "0.0")}</data>\n'
+                    minimal_graphml += '    </node>\n'
+                
+                # エッジを追加
+                for u, v, attrs in G.edges(data=True):
+                    minimal_graphml += f'    <edge source="{u}" target="{v}"/>\n'
+                
+                minimal_graphml += '  </graph>\n'
+                minimal_graphml += '</graphml>'
+                
+                standardized_graphml = minimal_graphml
+                logger.debug("Generated minimal GraphML as fallback")
+            
+            # <key>要素が存在しない場合は追加
+            if "<key " not in standardized_graphml:
+                logger.debug("No <key> elements found, adding them")
+                try:
+                    # <graphml>タグの後に<key>要素を挿入
+                    parts = standardized_graphml.split("<graphml ", 1)
+                    if len(parts) == 2:
+                        # <graphml>タグの閉じ括弧を見つける
+                        graphml_tag_parts = parts[1].split(">", 1)
+                        if len(graphml_tag_parts) == 2:
+                            key_str = ">\n  " + "\n  ".join(key_elements) + "\n  "
+                            standardized_graphml = parts[0] + "<graphml " + graphml_tag_parts[0] + key_str + graphml_tag_parts[1]
+                        else:
+                            # 通常のケース
+                            key_str = "\n  " + "\n  ".join(key_elements) + "\n  "
+                            standardized_graphml = parts[0] + "<graphml " + parts[1].replace("<graph ", key_str + "<graph ", 1)
+                    else:
+                        logger.warning("Could not find <graphml> tag for inserting <key> elements")
+                        # <graphml>タグが見つからない場合は、最初に<key>要素を追加
+                        if standardized_graphml.strip().startswith("<?xml"):
+                            xml_parts = standardized_graphml.split("?>", 1)
+                            if len(xml_parts) == 2:
+                                key_str = "?>\n<graphml>\n  " + "\n  ".join(key_elements) + "\n  "
+                                standardized_graphml = xml_parts[0] + key_str + xml_parts[1]
+                        else:
+                            # XMLヘッダーもない場合は、最初から追加
+                            key_str = '<?xml version="1.0" encoding="UTF-8"?>\n<graphml>\n  ' + "\n  ".join(key_elements) + "\n  "
+                            standardized_graphml = key_str + standardized_graphml
+                except Exception as key_error:
+                    logger.error(f"<key>要素の追加中にエラーが発生しました: {key_error}")
+                    # エラーが発生した場合でも処理を続行
+            
+            # エクスポート後の内容をデバッグログに出力
+            logger.debug(f"Final standardized GraphML (first 500 chars): {standardized_graphml[:500]}...")
+        except Exception as export_error:
+            logger.error(f"Error exporting GraphML: {export_error}")
+            # エラーの詳細をトレースバックとともに記録
+            import traceback
+            logger.error(f"Export error traceback: {traceback.format_exc()}")
+            
+            # より詳細なエラーメッセージを提供
+            error_msg = str(export_error)
+            if "not a string" in error_msg or "must be a string" in error_msg:
+                return {
+                    "success": False,
+                    "error": f"属性値の型変換に失敗しました。すべての属性値は文字列である必要があります: {error_msg}"
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"標準GraphMLへのエクスポートに失敗しました: {error_msg}"
+                }
         
         return {
             "success": True,
@@ -287,6 +591,9 @@ def convert_to_standard_graphml(graphml_content):
         }
     except Exception as e:
         logger.error(f"Error converting GraphML: {e}")
+        # エラーの詳細をトレースバックとともに記録
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return {
             "success": False,
             "error": f"Error converting GraphML: {str(e)}"

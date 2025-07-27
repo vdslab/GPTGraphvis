@@ -85,29 +85,56 @@ async def upload_new_network(
     """
     if not file.filename.endswith(".graphml"):
         raise HTTPException(status_code=400, detail="Invalid file type. Please upload a .graphml file.")
+    
+    try:
+        graphml_content = await file.read()
         
-    graphml_content = await file.read()
-    
-    # Create a new conversation
-    db_conversation = models.Conversation(
-        title=f"Conversation for {file.filename}",
-        user_id=current_user.id
-    )
-    db.add(db_conversation)
-    db.commit()
-    db.refresh(db_conversation)
-    
-    # Create the associated network
-    db_network = models.Network(
-        name=file.filename,
-        conversation_id=db_conversation.id,
-        graphml_content=graphml_content.decode("utf-8")
-    )
-    db.add(db_network)
-    db.commit()
-    db.refresh(db_conversation) # Refresh to get the network relationship loaded
-    
-    return db_conversation
+        # Validate GraphML content
+        try:
+            G = nx.read_graphml(io.StringIO(graphml_content.decode("utf-8")))
+            print(f"Successfully validated GraphML: Nodes: {G.number_of_nodes()}, Edges: {G.number_of_edges()}")
+        except Exception as validate_error:
+            print(f"Error validating GraphML: {str(validate_error)}")
+            raise HTTPException(status_code=400, detail=f"Invalid GraphML content: {str(validate_error)}")
+        
+        # Create a new conversation
+        try:
+            db_conversation = models.Conversation(
+                title=f"Conversation for {file.filename}",
+                user_id=current_user.id
+            )
+            db.add(db_conversation)
+            db.commit()
+            db.refresh(db_conversation)
+            print(f"Created conversation with ID: {db_conversation.id}")
+        except Exception as db_error:
+            print(f"Error creating conversation: {str(db_error)}")
+            raise HTTPException(status_code=500, detail=f"Error creating conversation: {str(db_error)}")
+        
+        # Create the associated network
+        try:
+            db_network = models.Network(
+                name=file.filename,
+                conversation_id=db_conversation.id,
+                graphml_content=graphml_content.decode("utf-8")
+            )
+            db.add(db_network)
+            db.commit()
+            db.refresh(db_conversation) # Refresh to get the network relationship loaded
+            print(f"Created network for conversation ID: {db_conversation.id}")
+        except Exception as network_error:
+            print(f"Error creating network: {str(network_error)}")
+            # Rollback conversation if network creation fails
+            db.delete(db_conversation)
+            db.commit()
+            raise HTTPException(status_code=500, detail=f"Error creating network: {str(network_error)}")
+        
+        return db_conversation
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"Unexpected error in upload_new_network: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 @router.post("/{network_id}/upload", response_model=schemas.Network)
 async def upload_and_overwrite_network(

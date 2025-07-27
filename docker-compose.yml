@@ -37,7 +37,7 @@ services:
     ports:
       - "8001:8001"
     environment:
-      - LOG_LEVEL=INFO
+      - LOG_LEVEL=DEBUG
 
   frontend:
     build:

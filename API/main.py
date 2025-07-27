@@ -11,7 +11,27 @@ from database import engine, Base
 from routers import auth as auth_router
 from routers import chat as chat_router
 from routers import network as network_router
+from routers import proxy as proxy_router
 import auth
+
+# WebSocket接続マネージャー
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, WebSocket] = {}
+    
+    async def connect(self, websocket: WebSocket, client_id: str):
+        await websocket.accept()
+        self.active_connections[client_id] = websocket
+        logging.info(f"Client {client_id} connected. Total: {len(self.active_connections)}")
+    
+    def disconnect(self, client_id: str):
+        if client_id in self.active_connections:
+            del self.active_connections[client_id]
+            logging.info(f"Client {client_id} disconnected. Total: {len(self.active_connections)}")
+    
+    async def broadcast(self, message: Dict[str, Any]):
+        for connection in self.active_connections.values():
+            await connection.send_json(message)
 
 # データベースの接続を待機
 for i in range(10):
@@ -51,27 +71,10 @@ app.add_middleware(
 app.include_router(auth_router.router)
 app.include_router(chat_router.router)
 app.include_router(network_router.router)
+app.include_router(proxy_router.router)
 
-# WebSocket接続マネージャー
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: Dict[str, WebSocket] = {}
-    
-    async def connect(self, websocket: WebSocket, client_id: str):
-        await websocket.accept()
-        self.active_connections[client_id] = websocket
-        logging.info(f"Client {client_id} connected. Total: {len(self.active_connections)}")
-    
-    def disconnect(self, client_id: str):
-        if client_id in self.active_connections:
-            del self.active_connections[client_id]
-            logging.info(f"Client {client_id} disconnected. Total: {len(self.active_connections)}")
-    
-    async def broadcast(self, message: Dict[str, Any]):
-        for connection in self.active_connections.values():
-            await connection.send_json(message)
-
-ws_manager = ConnectionManager()
+# WebSocket接続マネージャーをapp.stateに格納
+app.state.ws_manager = ConnectionManager()
 
 @app.get("/")
 async def root():
@@ -92,6 +95,7 @@ async def websocket_endpoint(websocket: WebSocket):
     認証済みクライアントからの接続を受け付け、接続を管理する。
     実際のイベント通知は他のルーターから `ws_manager` を介して行われる。
     """
+    ws_manager = websocket.app.state.ws_manager
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008, reason="Token is required")

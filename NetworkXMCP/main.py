@@ -59,17 +59,42 @@ class CentralityParams(GraphData):
     centrality_type: str = Field("degree", description="The type of centrality to calculate.")
     centrality_params: Dict[str, Any] = Field({}, description="Parameters for the centrality calculation.")
 
+# GraphMLインポート用のPydanticモデル
+class GraphMLImportParams(BaseModel):
+    graphml_content: str = Field(..., description="GraphML content to import.")
+
+# GraphML変換用のPydanticモデル
+class GraphMLConvertParams(BaseModel):
+    graphml_content: str = Field(..., description="GraphML content to convert.")
+
+# GraphMLエクスポート用のPydanticモデル
+class GraphMLExportParams(BaseModel):
+    graphml_content: str = Field(..., description="GraphML content to export.")
+    include_positions: bool = Field(True, description="Include node positions in the exported GraphML.")
+    include_visual_properties: bool = Field(True, description="Include visual properties in the exported GraphML.")
+
 # --- ヘルパー関数 ---
 
 def parse_graphml_string(graphml_content: str) -> nx.Graph:
     """GraphML文字列をパースしてNetworkXグラフを返す"""
     try:
+        # デバッグ情報を記録
+        logger.debug(f"Parsing GraphML string (length: {len(graphml_content)})")
+        
         content_io = io.BytesIO(graphml_content.encode('utf-8'))
         G = nx.read_graphml(content_io)
+        
+        logger.debug(f"Successfully parsed GraphML with {G.number_of_nodes()} nodes and {G.number_of_edges()} edges")
         return G
     except Exception as e:
-        logger.error(f"Error parsing GraphML string: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid GraphML content: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"Error parsing GraphML string: {error_msg}")
+        
+        # より詳細なエラーメッセージを提供
+        if "XML" in error_msg:
+            raise HTTPException(status_code=400, detail=f"Invalid XML in GraphML content: {error_msg}")
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid GraphML content: {error_msg}")
 
 def graph_to_cytoscape(G: nx.Graph, positions: Optional[Dict] = None) -> Dict[str, Any]:
     """NetworkXグラフをCytoscape.jsが期待するJSON形式に変換する"""
@@ -205,6 +230,112 @@ async def api_calculate_centrality(params: CentralityParams):
     except Exception as e:
         logger.error(f"Error calculating centrality: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tools/import_graphml", response_model=Dict[str, Any])
+async def api_import_graphml(params: GraphMLImportParams):
+    """
+    GraphML形式からネットワークをインポートする
+    """
+    try:
+        # デバッグ情報を記録
+        logger.debug(f"API: Importing GraphML content (length: {len(params.graphml_content)})")
+        
+        # 名前の衝突を避けるため、tools.network_toolsモジュールから関数をインポートする際に
+        # 別名を使用する
+        from tools.network_tools import parse_graphml_string as tools_parse_graphml_string
+        result = tools_parse_graphml_string(params.graphml_content)
+        
+        if not result["success"]:
+            error_msg = result.get("error", "Unknown error during GraphML import")
+            logger.error(f"API: GraphML import failed: {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        logger.debug(f"API: GraphML import successful with {len(result['nodes'])} nodes and {len(result['edges'])} edges")
+        return {
+            "result": {
+                "success": True,
+                "nodes": result["nodes"],
+                "edges": result["edges"]
+            }
+        }
+    except HTTPException:
+        # 既に処理済みのHTTPExceptionはそのまま再スロー
+        raise
+    except Exception as e:
+        error_msg = f"Error importing GraphML: {str(e)}"
+        logger.error(f"API: Unexpected error: {error_msg}")
+        raise HTTPException(status_code=500, detail=error_msg)
+
+@app.post("/tools/convert_graphml", response_model=Dict[str, Any])
+async def api_convert_graphml(params: GraphMLConvertParams):
+    """
+    GraphMLを標準形式に変換する
+    """
+    try:
+        # デバッグ情報を記録
+        logger.debug(f"API: Converting GraphML content (length: {len(params.graphml_content)})")
+        
+        # 名前の衝突を避けるため、tools.network_toolsモジュールから関数をインポートする際に
+        # 別名を使用する
+        from tools.network_tools import convert_to_standard_graphml as tools_convert_to_standard_graphml
+        result = tools_convert_to_standard_graphml(params.graphml_content)
+        
+        if not result["success"]:
+            error_msg = result.get("error", "Unknown error during GraphML conversion")
+            logger.error(f"API: GraphML conversion failed: {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        logger.debug("API: GraphML conversion successful")
+        return {
+            "success": True,
+            "graphml_content": result["graphml_content"]
+        }
+    except HTTPException:
+        # 既に処理済みのHTTPExceptionはそのまま再スロー
+        raise
+    except Exception as e:
+        error_msg = f"Error converting GraphML: {str(e)}"
+        logger.error(f"API: Unexpected error: {error_msg}")
+        raise HTTPException(status_code=500, detail=error_msg)
+
+@app.post("/tools/export_graphml", response_model=Dict[str, Any])
+async def api_export_graphml(params: GraphMLExportParams):
+    """
+    ネットワークをGraphML形式でエクスポートする
+    """
+    try:
+        # デバッグ情報を記録
+        logger.debug(f"API: Exporting GraphML content (length: {len(params.graphml_content)})")
+        
+        try:
+            G = parse_graphml_string(params.graphml_content)
+        except HTTPException as parse_error:
+            logger.error(f"API: GraphML parse error during export: {parse_error.detail}")
+            raise
+        
+        from tools.network_tools import export_network_as_graphml
+        result = export_network_as_graphml(G, None, None)
+        
+        if not result["success"]:
+            error_msg = result.get("error", "Unknown error during GraphML export")
+            logger.error(f"API: GraphML export failed: {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
+        
+        logger.debug(f"API: GraphML export successful")
+        return {
+            "result": {
+                "success": True,
+                "format": "graphml",
+                "content": result["content"]
+            }
+        }
+    except HTTPException:
+        # 既に処理済みのHTTPExceptionはそのまま再スロー
+        raise
+    except Exception as e:
+        error_msg = f"Error exporting GraphML: {str(e)}"
+        logger.error(f"API: Unexpected error: {error_msg}")
+        raise HTTPException(status_code=500, detail=error_msg)
 
 if __name__ == "__main__":
     import uvicorn

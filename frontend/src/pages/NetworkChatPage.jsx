@@ -8,6 +8,7 @@ import FileUploadButton from "../components/FileUploadButton";
 
 const NetworkChatPage = () => {
   const {
+    nodes,
     edges,
     positions,
     layout,
@@ -32,88 +33,7 @@ const NetworkChatPage = () => {
   });
 
   // ネットワーク情報を取得
-  useEffect(() => {
-    const fetchNetworkInfo = async () => {
-      try {
-        const info = await getNetworkInfo();
-        if (info && info.success) {
-          // ネットワークがあるかどうかチェック
-          if (info.network_info.has_network) {
-            // 通常の処理：中心性情報を更新
-            setNetworkState((prevState) => ({
-              ...prevState,
-              centrality: info.network_info.current_centrality,
-            }));
-          } else {
-            // ネットワークがない場合：サンプルネットワークを生成
-            console.log(
-              "ネットワークが存在しません。サンプルネットワークを生成します。",
-            );
-            const result = await mcpClient.getSampleNetwork();
-            if (result && result.success) {
-              // サンプルネットワークの状態を設定
-              useNetworkStore.setState({
-                positions: result.nodes.map((node) => ({
-                  id: node.id,
-                  label: node.label || node.id,
-                  x: node.x || 0,
-                  y: node.y || 0,
-                  size: node.size || 5,
-                  color: node.color || "#1d4ed8",
-                })),
-                edges: result.edges.map((edge) => ({
-                  source: edge.source,
-                  target: edge.target,
-                  width: edge.width || 1,
-                  color: edge.color || "#94a3b8",
-                })),
-                layout: result.layout || "spring",
-                layoutParams: result.layout_params || {},
-                error: null, // エラーをクリア
-              });
-            }
-          }
-        } else if (info && info.error) {
-          // API からのエラーレスポンス
-          console.error("Network info API error:", info.error);
-        }
-      } catch (error) {
-        console.error("Error fetching network info:", error);
-        // エラー発生時もサンプルネットワークを試みる
-        try {
-          console.log(
-            "エラーが発生したため、サンプルネットワークを生成します。",
-          );
-          const result = await mcpClient.getSampleNetwork();
-          if (result && result.success) {
-            useNetworkStore.setState({
-              positions: result.nodes.map((node) => ({
-                id: node.id,
-                label: node.label || node.id,
-                x: node.x || 0,
-                y: node.y || 0,
-                size: node.size || 5,
-                color: node.color || "#1d4ed8",
-              })),
-              edges: result.edges.map((edge) => ({
-                source: edge.source,
-                target: edge.target,
-                width: edge.width || 1,
-                color: edge.color || "#94a3b8",
-              })),
-              layout: result.layout || "spring",
-              layoutParams: result.layout_params || {},
-              error: null, // エラーをクリア
-            });
-          }
-        } catch (fallbackError) {
-          console.error("Failed to generate sample network:", fallbackError);
-        }
-      }
-    };
-
-    fetchNetworkInfo();
-  }, [getNetworkInfo]);
+  // ネットワーク情報を取得するuseEffectは削除し、初期化ロジックを一元化
 
   const { messages, sendMessage, isProcessing, addMessage } = useChatStore();
 
@@ -236,7 +156,8 @@ const NetworkChatPage = () => {
           return;
         }
 
-        const result = await mcpClient.listUserNetworks(userId);
+        // APIサーバーを経由してユーザーのネットワークリストを取得
+        const result = await mcpClient.useTool("list_user_networks", { user_id: userId });
         if (result.success) {
           console.log("Loaded user networks:", result.networks);
         } else {
@@ -250,118 +171,186 @@ const NetworkChatPage = () => {
     loadUserNetworks();
   }, []);
 
-  // Load sample network on component mount
+  // 初期ネットワーク読み込み - コンポーネントマウント時に一度だけ実行
   useEffect(() => {
-    const loadNetwork = async () => {
+    console.log("NetworkChatPage: Initial network load effect triggered");
+    console.log("Current state:", {
+      nodesLength: nodes?.length || 0,
+      edgesLength: edges?.length || 0,
+      positionsLength: positions?.length || 0,
+      isLoading
+    });
+    
+    // 既にネットワークデータが完全に読み込まれている場合はスキップ
+    if (positions?.length > 0 && edges?.length > 0 && nodes?.length > 0) {
+      console.log("NetworkChatPage: Complete network data already exists, skipping initial load");
+      return;
+    }
+
+    // 直接サンプルネットワークを生成する関数
+    const generateSampleNetwork = () => {
+      console.log("NetworkChatPage: Generating sample network directly");
+      
+      // サンプルネットワークを直接生成
+      const sampleNodes = [];
+      const sampleEdges = [];
+      const samplePositions = [];
+      
+      // 中心ノード
+      sampleNodes.push({
+        id: "0",
+        label: "Center Node",
+      });
+      
+      // 中心ノードの位置
+      samplePositions.push({
+        id: "0",
+        label: "Center Node",
+        x: 0,
+        y: 0,
+        size: 8,
+        color: "#1d4ed8",
+      });
+      
+      // 10個の衛星ノード
+      for (let i = 1; i <= 10; i++) {
+        sampleNodes.push({
+          id: i.toString(),
+          label: `Node ${i}`,
+        });
+        
+        // 中心ノードとの接続
+        sampleEdges.push({
+          source: "0",
+          target: i.toString(),
+        });
+        
+        // 円形に配置
+        const angle = (i - 1) * (2 * Math.PI / 10);
+        samplePositions.push({
+          id: i.toString(),
+          label: `Node ${i}`,
+          x: Math.cos(angle),
+          y: Math.sin(angle),
+          size: 5,
+          color: "#1d4ed8",
+        });
+      }
+      
+      // 状態を直接更新
+      setNetworkState((prevState) => ({
+        ...prevState,
+        centrality: null,
+      }));
+      
+      return { sampleNodes, sampleEdges, samplePositions };
+    };
+
+    const loadInitialNetwork = async () => {
       try {
-        console.log("Attempting to load sample network");
-        // Check if we have a token
+        console.log("NetworkChatPage: Loading initial network data");
+        // トークンの確認
         const token = localStorage.getItem("token");
         if (!token) {
-          console.error("No token found, cannot load sample network");
+          console.error("NetworkChatPage: No token found, cannot load initial network");
           return;
         }
-        console.log("Token found:", token.substring(0, 10) + "...");
 
-        // Try to load sample network directly from NetworkX server
         try {
-          console.log(
-            "Attempting to load sample network directly from NetworkX server",
-          );
-          const result =
-            await mcpClient.callNetworkXDirect("get_sample_network");
-          console.log("Sample network from direct call:", result);
-
-          if (
-            result &&
-            result.success &&
-            result.nodes &&
-            result.nodes.length > 0
-          ) {
-            console.log("Using sample network from direct call");
-            // Update network store with data from direct call
+          // mcpClient.getSampleNetworkを使用してサンプルネットワークを読み込む
+          console.log("NetworkChatPage: Loading sample network via MCP client");
+          const result = await mcpClient.getSampleNetwork();
+          
+          if (result && result.success) {
+            console.log("NetworkChatPage: Sample network loaded successfully via MCP client");
+            
+            // 状態を直接更新 - 重要: 他の関数が呼び出されないようにするため、完全な状態を一度に設定
             useNetworkStore.setState({
-              positions: result.nodes.map((node) => ({
-                id: node.id,
-                label: node.label || node.id,
-                x: node.x || 0,
-                y: node.y || 0,
-                size: node.size || 5,
-                color: node.color || "#1d4ed8",
-              })),
-              edges: result.edges.map((edge) => ({
-                source: edge.source,
-                target: edge.target,
-                width: edge.width || 1,
-                color: edge.color || "#94a3b8",
-              })),
+              nodes: result.nodes || [],
+              edges: result.edges || [],
+              positions: result.nodes || [], // positionsとnodesを同じにする
               layout: result.layout || "spring",
-              layoutParams: result.layout_params || {},
+              isLoading: false,
+              error: null,
+              // 以下のフラグを追加して、他の関数が不必要に呼び出されないようにする
+              initialLoadComplete: true
             });
+            
+            // 更新後の状態を確認 - 直接storeから取得して確実に最新の状態を確認
+            const currentState = useNetworkStore.getState();
+            console.log("NetworkChatPage: State after sample network loading:", {
+              nodesLength: currentState.nodes?.length || 0,
+              edgesLength: currentState.edges?.length || 0,
+              positionsLength: currentState.positions?.length || 0,
+              isLoading: currentState.isLoading,
+              initialLoadComplete: currentState.initialLoadComplete
+            });
+            
             return;
           }
-        } catch (directError) {
-          console.error("Error loading sample network directly:", directError);
-          console.log("Trying MCP method next");
-
-          // Try to load sample network from MCP
-          try {
-            console.log("Attempting to load sample network from MCP");
-            const result = await mcpClient.getSampleNetwork();
-            console.log("Sample network from MCP:", result);
-
-            if (
-              result &&
-              result.success &&
-              result.nodes &&
-              result.nodes.length > 0
-            ) {
-              console.log("Using sample network from MCP");
-              // Update network store with data from MCP
-              useNetworkStore.setState({
-                positions: result.nodes.map((node) => ({
-                  id: node.id,
-                  label: node.label || node.id,
-                  x: node.x || 0,
-                  y: node.y || 0,
-                  size: node.size || 5,
-                  color: node.color || "#1d4ed8",
-                })),
-                edges: result.edges.map((edge) => ({
-                  source: edge.source,
-                  target: edge.target,
-                  width: edge.width || 1,
-                  color: edge.color || "#94a3b8",
-                })),
-                layout: result.layout || "spring",
-                layoutParams: result.layout_params || {},
-              });
-              return;
-            }
-          } catch (mcpError) {
-            console.error("Error loading sample network from MCP:", mcpError);
-            console.log("Falling back to traditional network loading");
-          }
+        } catch (mcpError) {
+          console.error("NetworkChatPage: Error loading sample network via MCP client:", mcpError);
+          console.log("NetworkChatPage: Falling back to direct sample network generation");
         }
 
-        // Fall back to traditional network loading
-        const result = await loadSampleNetwork();
-        if (result) {
-          console.log("Sample network loaded successfully");
-        } else {
-          console.error("Failed to load sample network");
-        }
+        // MCPクライアントでの読み込みに失敗した場合、サンプルネットワークを直接生成
+        console.log("NetworkChatPage: Generating sample network directly");
+        const { sampleNodes, sampleEdges, samplePositions } = generateSampleNetwork();
+        
+        // 状態を直接更新 - 重要: 他の関数が呼び出されないようにするため、完全な状態を一度に設定
+        useNetworkStore.setState({
+          nodes: sampleNodes,
+          edges: sampleEdges,
+          positions: samplePositions,
+          layout: "spring",
+          isLoading: false,
+          error: null,
+          // 以下のフラグを追加して、他の関数が不必要に呼び出されないようにする
+          initialLoadComplete: true
+        });
+        
+        console.log("NetworkChatPage: Sample network generated successfully:", {
+          nodesLength: sampleNodes.length,
+          edgesLength: sampleEdges.length,
+          positionsLength: samplePositions.length
+        });
+        
+        // 更新後の状態を確認 - 直接storeから取得して確実に最新の状態を確認
+        const currentState = useNetworkStore.getState();
+        console.log("NetworkChatPage: State after sample network generation:", {
+          nodesLength: currentState.nodes?.length || 0,
+          edgesLength: currentState.edges?.length || 0,
+          positionsLength: currentState.positions?.length || 0,
+          isLoading: currentState.isLoading,
+          initialLoadComplete: currentState.initialLoadComplete
+        });
       } catch (error) {
-        console.error("Error loading sample network:", error);
-        if (error.response) {
-          console.error("Response status:", error.response.status);
-          console.error("Response data:", error.response.data);
+        console.error("NetworkChatPage: Error loading initial network:", error);
+        
+        // エラーが発生した場合でも、サンプルネットワークを生成して表示
+        try {
+          console.log("NetworkChatPage: Attempting to generate fallback sample network after error");
+          const { sampleNodes, sampleEdges, samplePositions } = generateSampleNetwork();
+          
+          useNetworkStore.setState({
+            nodes: sampleNodes,
+            edges: sampleEdges,
+            positions: samplePositions,
+            layout: "spring",
+            isLoading: false,
+            error: null,
+            initialLoadComplete: true
+          });
+          
+          console.log("NetworkChatPage: Fallback sample network generated successfully");
+        } catch (fallbackError) {
+          console.error("NetworkChatPage: Failed to generate fallback sample network:", fallbackError);
         }
       }
     };
 
-    loadNetwork();
-  }, [loadSampleNetwork]);
+    loadInitialNetwork();
+  }, []); // 依存配列を空にして、コンポーネントマウント時に一度だけ実行されるようにする
 
   // Convert positions to graph data format for ForceGraph
   useEffect(() => {
@@ -420,7 +409,9 @@ const NetworkChatPage = () => {
             if (updateData.layoutParams) {
               setLayoutParams(updateData.layoutParams);
             }
-            calculateLayout();
+            // APIリクエストを送信しないようにコメントアウト
+            // calculateLayout();
+            console.log("Layout update received, but calculateLayout() call skipped to prevent infinite loop");
           }
           break;
 
@@ -513,7 +504,7 @@ const NetworkChatPage = () => {
         // Add assistant response about file upload
         addMessage({
           role: "assistant",
-          content: `ネットワークファイルは、ネットワーク可視化パネル上部の「ネットワークファイルをアップロード」ボタンをクリックしてアップロードできます。サポートされている形式には、GraphML、GEXF、GML、JSON、Pajek、EdgeList、およびAdjListが含まれます。または、ファイルを可視化エリアに直接ドラッグアンドドロップすることもできます。`,
+          content: `ネットワークファイルは、ネットワーク可視化パネル右上の「Upload Network File」ボタンをクリックしてアップロードできます。サポートされている形式には、GraphML、GEXF、GML、JSON、Pajek、EdgeList、およびAdjListが含まれます。または、ファイルを可視化エリアに直接ドラッグアンドドロップすることもできます。`,
           timestamp: new Date().toISOString(),
         });
       } else {
@@ -675,6 +666,15 @@ const NetworkChatPage = () => {
             />
           </div>
 
+          {/* Desktop upload button - always visible */}
+          <div style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 50 }}>
+            <FileUploadButton
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow-lg flex items-center justify-center"
+              buttonText="Upload Network File"
+              onFileUpload={handleFileUpload}
+            />
+          </div>
+
           {/* Graph visualization */}
           <div
             className={`flex-1 relative ${isDragging ? "bg-blue-50" : ""}`}
@@ -733,9 +733,25 @@ const NetworkChatPage = () => {
             <ForceGraph2D
               ref={graphRef}
               graphData={graphData}
-              nodeLabel={(node) =>
-                `${node.label || node.id}${network_state.centrality ? `\n中心性値: ${node.size ? ((node.size - 5) / 10).toFixed(2) : "不明"}` : ""}`
-              }
+              nodeLabel={(node) => {
+                // ノードの基本情報を表示
+                let label = `${node.label || node.id}`;
+                
+                // 中心性値がある場合は表示
+                if (network_state.centrality) {
+                  label += `\n中心性値: ${node.size ? ((node.size - 5) / 10).toFixed(2) : "不明"}`;
+                }
+                
+                // ノードの属性情報を表示
+                for (const [key, value] of Object.entries(node)) {
+                  // id, label, x, y, size, colorは基本情報なのでスキップ
+                  if (!['id', 'label', 'x', 'y', 'size', 'color', '__indexColor', 'index', 'vx', 'vy', 'fx', 'fy'].includes(key)) {
+                    label += `\n${key}: ${value}`;
+                  }
+                }
+                
+                return label;
+              }}
               nodeRelSize={6}
               nodeVal={(node) => node.size}
               nodeColor={(node) => node.color}
@@ -746,21 +762,49 @@ const NetworkChatPage = () => {
               // ノードクリック時の処理
               onNodeClick={(node) => {
                 console.log("Node clicked:", node);
+                
+                // ノードの属性情報を収集
+                let nodeInfo = `**ノード「${node.label || node.id}」の情報**\n\n`;
+                
+                // 中心性値がある場合は表示
                 if (network_state.centrality) {
-                  addMessage({
-                    role: "assistant",
-                    content: `**ノード「${node.label || node.id}」の情報**\n\n中心性値: ${((node.size - 5) / 10).toFixed(3)}\n\nこのノードは${
-                      node.size > 12
-                        ? "非常に重要"
-                        : node.size > 9
-                          ? "比較的重要"
-                          : node.size > 7
-                            ? "平均的な重要度"
-                            : "あまり重要でない"
-                    }位置にあります。`,
-                    timestamp: new Date().toISOString(),
-                  });
+                  const centralityValue = ((node.size - 5) / 10).toFixed(3);
+                  nodeInfo += `中心性値: ${centralityValue}\n\n`;
+                  
+                  // 重要度の判定
+                  const importance = node.size > 12
+                    ? "非常に重要"
+                    : node.size > 9
+                      ? "比較的重要"
+                      : node.size > 7
+                        ? "平均的な重要度"
+                        : "あまり重要でない";
+                  
+                  nodeInfo += `このノードは${importance}位置にあります。\n\n`;
                 }
+                
+                // その他の属性情報を表示
+                nodeInfo += "**属性情報:**\n";
+                for (const [key, value] of Object.entries(node)) {
+                  // id, label, x, y, size, colorは基本情報なのでスキップ
+                  if (!['id', 'label', 'x', 'y', 'size', 'color', '__indexColor', 'index', 'vx', 'vy', 'fx', 'fy'].includes(key)) {
+                    nodeInfo += `- ${key}: ${value}\n`;
+                  }
+                }
+                
+                // 基本情報も表示
+                nodeInfo += "\n**基本情報:**\n";
+                nodeInfo += `- ID: ${node.id}\n`;
+                nodeInfo += `- ラベル: ${node.label || node.id}\n`;
+                nodeInfo += `- サイズ: ${node.size}\n`;
+                nodeInfo += `- 色: ${node.color}\n`;
+                nodeInfo += `- 位置: (${node.x.toFixed(2)}, ${node.y.toFixed(2)})\n`;
+                
+                addMessage({
+                  role: "assistant",
+                  content: nodeInfo,
+                  timestamp: new Date().toISOString(),
+                });
               }}
               // ホバー効果の追加
               nodeCanvasObject={(node, ctx) => {
