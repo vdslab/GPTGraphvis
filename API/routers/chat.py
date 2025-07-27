@@ -25,14 +25,16 @@ router = APIRouter(
     responses={401: {"description": "Unauthorized"}},
 )
 
+# NetworkXMCPサーバーとの通信はproxy.pyを介して行う
+# APIサーバー内部では直接NetworkXMCPサーバーにアクセス
 NETWORKX_MCP_URL = os.environ.get("NETWORKX_MCP_URL", "http://networkx-mcp:8001")
 
 def create_empty_graphml() -> str:
     """Creates an empty GraphML string."""
     G = nx.Graph()
-    output = io.StringIO()
+    output = io.BytesIO()
     nx.write_graphml(G, output)
-    return output.getvalue()
+    return output.getvalue().decode('utf-8')
 
 @router.post("/conversations", response_model=schemas.Conversation)
 async def create_conversation(
@@ -72,6 +74,25 @@ async def get_conversations(
     Get all conversations for the current user.
     """
     return db.query(models.Conversation).filter(models.Conversation.user_id == current_user.id).all()
+
+@router.get("/conversations/{conversation_id}", response_model=schemas.Conversation)
+async def get_conversation(
+    conversation_id: int,
+    current_user: models.User = Depends(auth.get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get a specific conversation by ID.
+    """
+    db_conversation = db.query(models.Conversation).filter(
+        models.Conversation.id == conversation_id,
+        models.Conversation.user_id == current_user.id
+    ).first()
+    
+    if db_conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    
+    return db_conversation
 
 @router.get("/conversations/{conversation_id}/messages", response_model=List[schemas.ChatMessage])
 async def get_messages(
@@ -168,11 +189,18 @@ async def process_and_respond(db: Session, conversation_id: int, user_message_co
                 **tool_args
             }
 
-            # 4. Call NetworkXMCP
+            # 4. Call NetworkXMCP via proxy
             async with httpx.AsyncClient() as client:
-                response = await client.post(f"{NETWORKX_MCP_URL}/tools/{tool_name}", json=mcp_payload, timeout=30.0)
+                # NetworkXMCPサーバーに直接リクエスト
+                url = f"{NETWORKX_MCP_URL}/tools/{tool_name}"
+                print(f"Calling NetworkXMCP directly: {url}")
+                response = await client.post(url, json=mcp_payload, timeout=30.0)
                 response.raise_for_status()
-                mcp_result = response.json().get("result", {})
+                # プロキシからのレスポンス形式に合わせて処理
+                if "result" in response.json():
+                    mcp_result = response.json().get("result", {})
+                else:
+                    mcp_result = response.json()
 
             # 5. Update network based on result
             if mcp_result.get("success"):
@@ -324,11 +352,18 @@ async def process_chat(
                 **tool_args
             }
             
-            # Call NetworkXMCP
+            # Call NetworkXMCP via proxy
             async with httpx.AsyncClient() as client:
-                response = await client.post(f"{NETWORKX_MCP_URL}/tools/{tool_name}", json=mcp_payload, timeout=30.0)
+                # NetworkXMCPサーバーに直接リクエスト
+                url = f"{NETWORKX_MCP_URL}/tools/{tool_name}"
+                print(f"Calling NetworkXMCP directly: {url}")
+                response = await client.post(url, json=mcp_payload, timeout=30.0)
                 response.raise_for_status()
-                mcp_result = response.json().get("result", {})
+                # プロキシからのレスポンス形式に合わせて処理
+                if "result" in response.json():
+                    mcp_result = response.json().get("result", {})
+                else:
+                    mcp_result = response.json()
             
             # Update network based on result
             if mcp_result.get("success"):
