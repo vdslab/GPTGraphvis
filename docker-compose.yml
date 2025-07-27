@@ -24,11 +24,14 @@ services:
       db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/networkvis
-      - SECRET_KEY=your-secret-key
-      - ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_MINUTES=30
-      - NETWORKX_MCP_URL=http://networkx-mcp:8001
+      # These are now managed in the .env file
+      # - DATABASE_URL=postgresql://postgres:postgres@db:5432/networkvis
+      # - SECRET_KEY=your-secret-key
+      # - ALGORITHM=HS256
+      # - ACCESS_TOKEN_EXPIRE_MINUTES=30
+      - NETWORKX_MCP_URL=http://networkx-mcp:8001 # This can stay as it's internal to docker-compose
+    env_file:
+      - ./.env
 
   networkx-mcp:
     build: ./NetworkXMCP

@@ -159,10 +159,11 @@ async def create_message(
 async def process_and_respond(db: Session, conversation_id: int, user_message_content: str):
     """
     Process user message, interact with LLM and NetworkXMCP, and save the response.
+    This version handles the full conversation loop including tool calls and feedback.
     """
     db_conversation = db.query(models.Conversation).get(conversation_id)
-    if not db_conversation or not db_conversation.network:
-        # Log error and exit
+    if not db_conversation:
+        print(f"Error: Conversation with ID {conversation_id} not found.")
         return
 
     try:
@@ -172,93 +173,75 @@ async def process_and_respond(db: Session, conversation_id: int, user_message_co
         ).order_by(models.ChatMessage.created_at).all()
         formatted_history = [{"role": msg.role, "content": msg.content} for msg in history]
 
-        # 2. Call LLM
-        llm_response = await process_chat_message(formatted_history) # This needs to be adapted to potentially return tool calls
+        # 2. Call LLM to get the next step (either a tool call or a direct response)
+        llm_response = await process_chat_message(formatted_history)
 
-        # 3. Check for tool calls
         tool_calls = llm_response.get("tool_calls")
-        if tool_calls:
-            # For now, assume one tool call per message for simplicity
-            tool_call = tool_calls[0]
-            tool_name = tool_call["function"]["name"]
-            tool_args = json.loads(tool_call["function"]["arguments"])
 
-            # Prepare data for NetworkXMCP
+        if tool_calls:
+            # 3. Execute the tool call
+            tool_call = tool_calls[0] # Assuming one tool call for now
+            tool_name = tool_call["function"]["name"]
+            tool_args = tool_call["function"]["arguments"] # Already a dict
+
+            # Prepare payload for NetworkXMCP
             mcp_payload = {
-                "graphml_content": db_conversation.network.graphml_content,
+                "graphml_content": db_conversation.network.graphml_content if db_conversation.network else create_empty_graphml(),
                 **tool_args
             }
 
-            # 4. Call NetworkXMCP via proxy
+            # Call NetworkXMCP
+            tool_result_content = ""
             async with httpx.AsyncClient() as client:
-                # NetworkXMCPサーバーに直接リクエスト
                 url = f"{NETWORKX_MCP_URL}/tools/{tool_name}"
-                print(f"Calling NetworkXMCP directly: {url}")
-                response = await client.post(url, json=mcp_payload, timeout=30.0)
-                response.raise_for_status()
-                # プロキシからのレスポンス形式に合わせて処理
-                if "result" in response.json():
+                print(f"Calling NetworkXMCP: {url} with args {tool_args}")
+                response = await client.post(url, json=mcp_payload, timeout=60.0)
+                
+                if response.status_code == 200:
                     mcp_result = response.json().get("result", {})
+                    if mcp_result.get("success"):
+                        # Update network or handle data
+                        # This part needs to be robust
+                        if 'positions' in mcp_result:
+                             # ... (update graphml with new positions)
+                            pass
+                        if 'centrality_values' in mcp_result:
+                            # The result is the centrality data itself.
+                            # We'll pass this back to the LLM to summarize.
+                            pass
+                        
+                        # Create a summary of the successful tool result for the LLM
+                        tool_result_content = json.dumps({"status": "success", "details": mcp_result})
+                    else:
+                        tool_result_content = json.dumps({"status": "error", "details": mcp_result.get("error", "Unknown error from tool.")})
                 else:
-                    mcp_result = response.json()
+                    tool_result_content = json.dumps({"status": "error", "details": f"Tool execution failed with status {response.status_code}: {response.text}"})
 
-            # 5. Update network based on result
-            if mcp_result.get("success"):
-                # This part needs to be more robust based on the tool's output
-                # For example, 'change_layout' returns 'positions'
-                if 'positions' in mcp_result:
-                    # Read, update, and write back the GraphML
-                    G = nx.read_graphml(io.StringIO(db_conversation.network.graphml_content))
-                    for node_id, pos in mcp_result['positions'].items():
-                        if G.has_node(node_id):
-                            G.nodes[node_id]['x'] = pos['x']
-                            G.nodes[node_id]['y'] = pos['y']
-                    
-                    output = io.StringIO()
-                    nx.write_graphml(G, output)
-                    db_conversation.network.graphml_content = output.getvalue()
-                    db.commit()
-                    
-                    # WebSocket通知を送信
-                    try:
-                        # FastAPIアプリケーションのインスタンスを取得
-                        from fastapi import FastAPI
-                        from fastapi.concurrency import run_in_threadpool
-                        
-                        app = FastAPI.get_current()
-                        
-                        # WebSocket接続マネージャーを取得
-                        ws_manager = app.state.ws_manager
-                        
-                        # 通知を送信
-                        print(f"Sending WebSocket notification for network update: network_id={db_conversation.network.id}")
-                        await ws_manager.broadcast({
-                            "event": "graph_updated",
-                            "network_id": db_conversation.network.id,
-                            "timestamp": datetime.datetime.now().isoformat()
-                        })
-                    except Exception as ws_error:
-                        print(f"Error sending WebSocket notification: {ws_error}")
+            # 4. Send the tool result back to the LLM to get a natural language response
+            # Append the original llm_response (with the tool call) and the tool result to the history
+            formatted_history.append({"role": "assistant", "content": json.dumps(llm_response)})
+            formatted_history.append({"role": "tool", "content": tool_result_content})
+            
+            final_llm_response = await process_chat_message(formatted_history)
+            assistant_content = final_llm_response.get("content", "I've completed the operation.")
 
-            # Save assistant response about tool use
-            assistant_content = f"I have performed the operation: {tool_name}."
         else:
-            assistant_content = llm_response.get("content", "I am not sure how to respond to that.")
+            # No tool call, just a direct response from the LLM
+            assistant_content = llm_response.get("content", "I'm not sure how to respond to that.")
 
-        # 6. Save assistant's final response
+        # 5. Save the final assistant response
         db_response = models.ChatMessage(
             content=assistant_content,
             role="assistant",
             user_id=db_conversation.user_id,
             conversation_id=conversation_id,
-            meta_data=json.dumps(llm_response)
+            meta_data=json.dumps(llm_response) # Store the initial LLM response for debugging
         )
         db.add(db_response)
         db.commit()
 
-        # WebSocket通知は削除（循環参照を避けるため）
-
     except Exception as e:
+        print(f"Error in process_and_respond: {str(e)}")
         # Log and save error message
         error_content = f"An error occurred: {str(e)}"
         db_error = models.ChatMessage(
@@ -274,179 +257,135 @@ async def process_and_respond(db: Session, conversation_id: int, user_message_co
 @router.post("/process")
 async def process_chat(
     request: Request,
-    background_tasks: BackgroundTasks,
     current_user: models.User = Depends(auth.get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Process a chat message without a specific conversation.
-    This endpoint is used by the frontend to process chat messages that are not tied to a specific conversation.
-    It forwards the message to the LLM and NetworkXMCP, and returns the response.
+    Process a chat message from the frontend, handling the full conversation loop.
+    This endpoint is the primary interaction point for the chat UI.
     """
     try:
-        # Get request body
         body = await request.json()
-        message = body.get("message", "")
-        
-        if not message:
+        message_content = body.get("message", "")
+        conversation_id = body.get("conversation_id") # Allow specifying conversation
+
+        if not message_content:
             raise HTTPException(status_code=400, detail="Message is required")
-        
-        # Get the user's active conversation or create a new one
-        db_conversation = db.query(models.Conversation).filter(
-            models.Conversation.user_id == current_user.id
-        ).order_by(models.Conversation.created_at.desc()).first()
-        
-        if not db_conversation:
-            # Create a new conversation
-            db_conversation = models.Conversation(
-                title="New Conversation",
-                user_id=current_user.id
-            )
-            db.add(db_conversation)
-            db.commit()
-            db.refresh(db_conversation)
-            
-            # Create an associated empty network
-            db_network = models.Network(
-                name="Initial Network",
-                conversation_id=db_conversation.id,
-                graphml_content=create_empty_graphml()
-            )
-            db.add(db_network)
-            db.commit()
-            db.refresh(db_conversation)
-        
+
+        # Find or create a conversation
+        if conversation_id:
+            db_conversation = db.query(models.Conversation).filter(
+                models.Conversation.id == conversation_id,
+                models.Conversation.user_id == current_user.id
+            ).first()
+            if not db_conversation:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+        else:
+            db_conversation = db.query(models.Conversation).filter(
+                models.Conversation.user_id == current_user.id
+            ).order_by(models.Conversation.created_at.desc()).first()
+            if not db_conversation:
+                db_conversation = models.Conversation(title="New Conversation", user_id=current_user.id)
+                db.add(db_conversation)
+                db.commit()
+                db.refresh(db_conversation)
+                # Create an associated empty network
+                db_network = models.Network(
+                    name="Initial Network",
+                    conversation_id=db_conversation.id,
+                    graphml_content=create_empty_graphml()
+                )
+                db.add(db_network)
+                db.commit()
+                db.refresh(db_conversation)
+
         # Save user message
         db_message = models.ChatMessage(
-            content=message,
+            content=message_content,
             role="user",
             user_id=current_user.id,
             conversation_id=db_conversation.id
         )
         db.add(db_message)
         db.commit()
-        db.refresh(db_message)
+
+        # --- Start Conversation Loop ---
         
-        # Get conversation history
+        # 1. Get history
         history = db.query(models.ChatMessage).filter(
             models.ChatMessage.conversation_id == db_conversation.id
         ).order_by(models.ChatMessage.created_at).all()
         formatted_history = [{"role": msg.role, "content": msg.content} for msg in history]
-        
-        # Call LLM
+
+        # 2. Call LLM
         llm_response = await process_chat_message(formatted_history)
-        
-        # Check for tool calls
         tool_calls = llm_response.get("tool_calls")
-        result = {"success": True}
         
+        final_assistant_content = ""
+        network_update_info = None
+
         if tool_calls:
-            # For now, assume one tool call per message for simplicity
+            # 3. Execute Tool
             tool_call = tool_calls[0]
             tool_name = tool_call["function"]["name"]
-            tool_args = json.loads(tool_call["function"]["arguments"])
-            
-            # Prepare data for NetworkXMCP
+            tool_args = tool_call["function"]["arguments"]
+
             mcp_payload = {
-                "graphml_content": db_conversation.network.graphml_content,
+                "graphml_content": db_conversation.network.graphml_content if db_conversation.network else create_empty_graphml(),
                 **tool_args
             }
-            
-            # Call NetworkXMCP via proxy
+
+            tool_result_for_llm = {}
             async with httpx.AsyncClient() as client:
-                # NetworkXMCPサーバーに直接リクエスト
                 url = f"{NETWORKX_MCP_URL}/tools/{tool_name}"
-                print(f"Calling NetworkXMCP directly: {url}")
-                response = await client.post(url, json=mcp_payload, timeout=30.0)
-                response.raise_for_status()
-                # プロキシからのレスポンス形式に合わせて処理
-                if "result" in response.json():
+                print(f"Calling MCP Tool: {url} with args: {tool_args}")
+                response = await client.post(url, json=mcp_payload, timeout=60.0)
+
+                if response.status_code == 200:
                     mcp_result = response.json().get("result", {})
+                    tool_result_for_llm = {"status": "success", "details": mcp_result}
+                    if mcp_result.get("success"):
+                        network_update_info = {"type": tool_name, **mcp_result}
+                        # Potentially update graphml in DB here if needed
                 else:
-                    mcp_result = response.json()
+                    error_detail = response.text
+                    tool_result_for_llm = {"status": "error", "details": f"Tool execution failed with status {response.status_code}: {error_detail}"}
             
-            # Update network based on result
-            if mcp_result.get("success"):
-                # This part needs to be more robust based on the tool's output
-                if 'positions' in mcp_result:
-                    # Read, update, and write back the GraphML
-                    G = nx.read_graphml(io.StringIO(db_conversation.network.graphml_content))
-                    for node_id, pos in mcp_result['positions'].items():
-                        if G.has_node(node_id):
-                            G.nodes[node_id]['x'] = pos['x']
-                            G.nodes[node_id]['y'] = pos['y']
-                    
-                    output = io.StringIO()
-                    nx.write_graphml(G, output)
-                    db_conversation.network.graphml_content = output.getvalue()
-                    db.commit()
-                    
-                    # WebSocket通知を送信
-                    try:
-                        # FastAPIアプリケーションのインスタンスを取得
-                        from fastapi import FastAPI
-                        from fastapi.concurrency import run_in_threadpool
-                        
-                        app = FastAPI.get_current()
-                        
-                        # WebSocket接続マネージャーを取得
-                        ws_manager = app.state.ws_manager
-                        
-                        # 通知を送信
-                        print(f"Sending WebSocket notification for network update: network_id={db_conversation.network.id}")
-                        await ws_manager.broadcast({
-                            "event": "graph_updated",
-                            "network_id": db_conversation.network.id,
-                            "timestamp": datetime.datetime.now().isoformat()
-                        })
-                    except Exception as ws_error:
-                        print(f"Error sending WebSocket notification: {ws_error}")
-                
-                # Add network update info to result
-                result["networkUpdate"] = {
-                    "type": tool_name,
-                    **mcp_result
-                }
+            # 4. Send tool result back to LLM
+            # We need to reconstruct the history for the final summarization call
+            final_history = formatted_history + [
+                {"role": "assistant", "content": json.dumps({"tool_calls": tool_calls})},
+                {"role": "tool", "content": json.dumps(tool_result_for_llm)}
+            ]
             
-            # Set assistant response about tool use
-            assistant_content = f"I have performed the operation: {tool_name}."
+            final_response_from_llm = await process_chat_message(final_history)
+            final_assistant_content = final_response_from_llm.get("content", "I have completed the requested action.")
+
         else:
-            assistant_content = llm_response.get("content", "I am not sure how to respond to that.")
-        
-        # Save assistant's response
+            # No tool call, just a direct response
+            final_assistant_content = llm_response.get("content", "I'm not sure how to respond.")
+
+        # 5. Save final assistant response
         db_response = models.ChatMessage(
-            content=assistant_content,
+            content=final_assistant_content,
             role="assistant",
             user_id=current_user.id,
             conversation_id=db_conversation.id,
-            meta_data=json.dumps(llm_response)
+            meta_data=json.dumps(llm_response) # Store initial response for debug
         )
         db.add(db_response)
         db.commit()
-        
-        # Return the result
-        result["content"] = assistant_content
-        return result
-        
+
+        # 6. Return result to frontend
+        return {
+            "success": True,
+            "content": final_assistant_content,
+            "conversation_id": db_conversation.id,
+            "networkUpdate": network_update_info
+        }
+
     except Exception as e:
-        # Log the error
-        print(f"Error processing chat message: {type(e).__name__}: {e}")
-        
-        # Return error response
-        try:
-            # バイト型のエラーメッセージを適切に処理
-            if isinstance(e, UnicodeDecodeError) or isinstance(e.__str__(), bytes):
-                error_message = "Unicode decode error occurred"
-            else:
-                error_message = str(e)
-                
-            return {
-                "success": False,
-                "content": f"An error occurred: {error_message}"
-            }
-        except Exception as decode_error:
-            # 最終的なフォールバック
-            return {
-                "success": False,
-                "content": "An unexpected error occurred while processing your message"
-            }
+        print(f"Error in /process endpoint: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "content": f"An unexpected error occurred: {str(e)}"}

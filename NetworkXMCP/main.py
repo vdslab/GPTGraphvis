@@ -59,6 +59,9 @@ class CentralityParams(GraphData):
     centrality_type: str = Field("degree", description="The type of centrality to calculate.")
     centrality_params: Dict[str, Any] = Field({}, description="Parameters for the centrality calculation.")
 
+class CentralitySuggestionParams(BaseModel):
+    user_query: str = Field(..., description="The user's query about node importance.")
+
 # GraphMLインポート用のPydanticモデル
 class GraphMLImportParams(BaseModel):
     graphml_content: str = Field(..., description="GraphML content to import.")
@@ -127,20 +130,6 @@ def apply_layout(G: nx.Graph, layout_type: str, **kwargs) -> Dict:
     # JSONシリアライズ可能な形式に変換
     return {str(k): {"x": float(v[0]), "y": float(v[1])} for k, v in positions.items()}
 
-def calculate_centrality(G: nx.Graph, centrality_type: str, **kwargs) -> Dict:
-    """中心性指標を計算する"""
-    centrality_functions = {
-        "degree": nx.degree_centrality,
-        "closeness": nx.closeness_centrality,
-        "betweenness": nx.betweenness_centrality,
-        "eigenvector": nx.eigenvector_centrality_numpy,
-        "pagerank": nx.pagerank
-    }
-    centrality_func = centrality_functions.get(centrality_type, nx.degree_centrality)
-    values = centrality_func(G, **kwargs)
-    return {str(k): float(v) for k, v in values.items()}
-
-
 # --- APIエンドポイント ---
 
 @app.get("/health")
@@ -158,7 +147,8 @@ async def get_mcp_info():
         "tools": [
             {"name": "get_sample_network", "description": "Get a sample network in GraphML format"},
             {"name": "change_layout", "description": "Change the layout algorithm for a given network"},
-            {"name": "calculate_centrality", "description": "Calculate centrality metrics for a given network"}
+            {"name": "calculate_centrality", "description": "Calculate centrality metrics for a given network"},
+            {"name": "suggest_centrality", "description": "Suggests appropriate centrality measures based on a user's query."}
         ]
     }
 
@@ -219,12 +209,20 @@ async def api_calculate_centrality(params: CentralityParams):
     """
     try:
         G = parse_graphml_string(params.graphml_content)
-        centrality_values = calculate_centrality(G, params.centrality_type, **params.centrality_params)
+        # network_toolsからインポートした関数を使用
+        from tools.network_tools import calculate_centrality as tools_calculate_centrality
+        result = tools_calculate_centrality(G, params.centrality_type, **params.centrality_params)
+        
+        if not result["success"]:
+            error_msg = result.get("error", "Unknown error during centrality calculation")
+            logger.error(f"API: Centrality calculation failed: {error_msg}")
+            raise HTTPException(status_code=400, detail=error_msg)
+
         return {
             "result": {
                 "success": True,
-                "centrality_type": params.centrality_type,
-                "centrality_values": centrality_values
+                "centrality_type": result["centrality_type"],
+                "centrality_values": result["centrality"]
             }
         }
     except Exception as e:
@@ -336,6 +334,19 @@ async def api_export_graphml(params: GraphMLExportParams):
         error_msg = f"Error exporting GraphML: {str(e)}"
         logger.error(f"API: Unexpected error: {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
+
+@app.post("/tools/suggest_centrality", response_model=Dict[str, Any])
+async def api_suggest_centrality(params: CentralitySuggestionParams):
+    """
+    ユーザーのクエリに基づいて、適切な中心性指標を提案する
+    """
+    try:
+        from tools.centrality_chat import suggest_centrality_from_query
+        result = suggest_centrality_from_query(params.user_query)
+        return {"result": result}
+    except Exception as e:
+        logger.error(f"Error suggesting centrality: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

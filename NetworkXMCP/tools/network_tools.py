@@ -786,3 +786,58 @@ def detect_communities(G, algorithm="louvain"):
             "success": False,
             "error": f"Error detecting communities: {str(e)}"
         }
+
+def calculate_centrality(G, centrality_type="degree", **kwargs):
+    """
+    指定された中心性指標を計算する
+
+    Args:
+        G (nx.Graph): NetworkXグラフ
+        centrality_type (str): 計算する中心性の種類
+            (degree, closeness, betweenness, eigenvector, pagerank)
+        **kwargs: 各中心性計算関数に渡す追加の引数
+
+    Returns:
+        dict: {node_id: centrality_value} の形式の辞書
+    """
+    try:
+        centrality_calculators = {
+            "degree": nx.degree_centrality,
+            "closeness": nx.closeness_centrality,
+            "betweenness": nx.betweenness_centrality,
+            "eigenvector": nx.eigenvector_centrality_numpy,
+            "pagerank": nx.pagerank
+        }
+
+        if centrality_type not in centrality_calculators:
+            raise ValueError(f"Unsupported centrality type: {centrality_type}")
+
+        # 固有ベクトル中心性の場合、max_iterのデフォルト値を設定
+        if centrality_type == "eigenvector":
+            kwargs.setdefault("max_iter", 1000)
+
+        # 中心性を計算
+        centrality = centrality_calculators[centrality_type](G, **kwargs)
+        
+        # 結果を標準化
+        max_value = max(centrality.values()) if centrality else 1.0
+        if max_value > 0:
+            # 0で除算しないようにチェック
+            centrality = {str(k): v / max_value for k, v in centrality.items()}
+        else:
+            centrality = {str(k): 0 for k, v in centrality.items()}
+
+        return {
+            "success": True,
+            "centrality_type": centrality_type,
+            "centrality": centrality
+        }
+    except Exception as e:
+        logger.error(f"Error calculating {centrality_type} centrality: {e}")
+        # エラー発生時にトレースバックをログに出力
+        import traceback
+        logger.error(traceback.format_exc())
+        return {
+            "success": False,
+            "error": f"Error calculating {centrality_type} centrality: {str(e)}"
+        }

@@ -11,17 +11,10 @@ const NetworkChatPage = () => {
     nodes,
     edges,
     positions,
-    layout,
     isLoading,
     error,
-    loadSampleNetwork,
-    calculateLayout,
-    setLayout,
-    setLayoutParams,
-    applyCentrality,
     uploadNetworkFile,
-    changeVisualProperties,
-    getNetworkInfo,
+    // Unused functions removed
   } = useNetworkStore();
 
   // ネットワーク状態を保持
@@ -353,157 +346,19 @@ const NetworkChatPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Process network updates from chat messages
-  useEffect(() => {
-    // Check if there are any messages
-    if (messages.length === 0) return;
-
-    // Get the most recent message
-    const lastMessage = messages[messages.length - 1];
-
-    // Check if it's an assistant message with a network update
-    if (lastMessage.role === "assistant" && lastMessage.networkUpdate) {
-      console.log(
-        "Processing network update from message:",
-        lastMessage.networkUpdate,
-      );
-
-      const { type, ...updateData } = lastMessage.networkUpdate;
-
-      // Handle different types of updates
-      switch (type) {
-        case "layout":
-          // Update layout
-          if (updateData.layout) {
-            console.log(`Applying layout: ${updateData.layout}`);
-            setLayout(updateData.layout);
-            if (updateData.layoutParams) {
-              setLayoutParams(updateData.layoutParams);
-            }
-            // APIリクエストを送信しないようにコメントアウト
-            // calculateLayout();
-            console.log("Layout update received, but calculateLayout() call skipped to prevent infinite loop");
-          }
-          break;
-
-        case "centrality":
-          // Apply centrality
-          if (updateData.centralityType) {
-            console.log(`Applying centrality: ${updateData.centralityType}`);
-            applyCentrality(updateData.centralityType);
-          }
-          break;
-
-        case "visualProperty":
-          // Change visual properties
-          if (updateData.propertyType && updateData.propertyValue) {
-            console.log(
-              `Changing visual property: ${updateData.propertyType} to ${updateData.propertyValue}`,
-            );
-            changeVisualProperties(
-              updateData.propertyType,
-              updateData.propertyValue,
-              updateData.propertyMapping || {},
-            );
-          }
-          break;
-
-        default:
-          console.log("Unknown network update type:", type);
-      }
-    }
-  }, [
-    messages,
-    setLayout,
-    setLayoutParams,
-    calculateLayout,
-    applyCentrality,
-    changeVisualProperties,
-  ]);
+  // The useEffect hook for processing network updates is no longer needed here.
+  // The logic is now handled inside chatStore.js, which directly updates networkStore.
+  // This component will automatically re-render when networkStore's state (like positions) changes.
 
   // Handle message submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // Prevent double submission
     if (!inputMessage.trim() || isProcessing) {
       return;
     }
-
-    // Clear input field immediately for better UX
     const messageToSend = inputMessage;
     setInputMessage("");
-
-    try {
-      // Check if the message is asking about uploading a file
-      const uploadFileKeywords = [
-        "upload",
-        "file",
-        "import",
-        "network file",
-        "アップロード",
-        "ファイル",
-        "インポート",
-        "ネットワークファイル",
-      ];
-      const isAskingAboutUpload = uploadFileKeywords.some((keyword) =>
-        messageToSend.toLowerCase().includes(keyword),
-      );
-
-      // 中心性に関する質問かどうかを確認
-      const centralityKeywords = [
-        "centrality",
-        "中心性",
-        "重要度",
-        "重要なノード",
-        "ノードの大きさ",
-        "重要",
-        "中心",
-      ];
-      const isAskingAboutCentrality = centralityKeywords.some((keyword) =>
-        messageToSend.toLowerCase().includes(keyword),
-      );
-
-      if (isAskingAboutUpload) {
-        // First, add the user message to the chat store
-        addMessage({
-          role: "user",
-          content: messageToSend,
-          timestamp: new Date().toISOString(),
-        });
-
-        // Add assistant response about file upload
-        addMessage({
-          role: "assistant",
-          content: `ネットワークファイルは、ネットワーク可視化パネル右上の「Upload Network File」ボタンをクリックしてアップロードできます。サポートされている形式には、GraphML、GEXF、GML、JSON、Pajek、EdgeList、およびAdjListが含まれます。または、ファイルを可視化エリアに直接ドラッグアンドドロップすることもできます。`,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        console.log("Sending message to chat API:", messageToSend);
-        // For all other messages, use the sendMessage function from chatStore
-        const response = await sendMessage(messageToSend);
-
-        // 中心性に関する質問の場合、ユーザーにフィードバックを提供
-        if (isAskingAboutCentrality && response && response.networkUpdate) {
-          console.log("Centrality update received:", response.networkUpdate);
-        }
-      }
-    } catch (error) {
-      console.error("Error sending message:", error);
-
-      // Only add error message if user message was already added
-      if (
-        messages.some((m) => m.role === "user" && m.content === messageToSend)
-      ) {
-        addMessage({
-          role: "assistant",
-          content:
-            "申し訳ありませんが、リクエストの処理中にエラーが発生しました。後でもう一度お試しください。",
-          timestamp: new Date().toISOString(),
-          error: true,
-        });
-      }
-    }
+    await sendMessage(messageToSend);
   };
 
   return (
