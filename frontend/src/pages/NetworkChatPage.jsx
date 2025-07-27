@@ -3,7 +3,7 @@ import ForceGraph2D from "react-force-graph-2d";
 import useNetworkStore from "../services/networkStore";
 import useChatStore from "../services/chatStore";
 import ReactMarkdown from "react-markdown";
-import mcpClient from "../services/mcpClient";
+import { networkAPI } from "../services/api";
 import FileUploadButton from "../components/FileUploadButton";
 
 const NetworkChatPage = () => {
@@ -157,7 +157,8 @@ const NetworkChatPage = () => {
         }
 
         // APIサーバーを経由してユーザーのネットワークリストを取得
-        const result = await mcpClient.useTool("list_user_networks", { user_id: userId });
+        const response = await networkAPI.useTool("list_user_networks", { user_id: userId });
+        const result = response.data.result;
         if (result.success) {
           console.log("Loaded user networks:", result.networks);
         } else {
@@ -257,9 +258,10 @@ const NetworkChatPage = () => {
         }
 
         try {
-          // mcpClient.getSampleNetworkを使用してサンプルネットワークを読み込む
-          console.log("NetworkChatPage: Loading sample network via MCP client");
-          const result = await mcpClient.getSampleNetwork();
+          // networkAPIを使用してサンプルネットワークを読み込む
+          console.log("NetworkChatPage: Loading sample network via API");
+          const response = await networkAPI.getSampleNetwork();
+          const result = response.data;
           
           if (result && result.success) {
             console.log("NetworkChatPage: Sample network loaded successfully via MCP client");

@@ -11,8 +11,8 @@ import axios from "axios";
 import { networkAPI } from "./api";
 
 // API URL
+// APIサーバーのURLのみを定義し、NetworkXMCPサーバーのURLは定義しない
 const API_URL = "http://localhost:8000";
-const MCP_URL = `${API_URL}/proxy/networkx`;
 
 /**
  * MCP client for interacting with the network visualization MCP server.
@@ -85,8 +85,8 @@ class MCPClient {
         throw new Error("Authentication required");
       }
 
-      // Call MCP resource endpoint via API proxy
-      const response = await axios.get(`${API_URL}/proxy/networkx${resourceUri}`, {
+      // Call API server endpoint instead of direct NetworkXMCP access
+      const response = await axios.get(`${API_URL}/network/resource${resourceUri}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -107,13 +107,13 @@ class MCPClient {
    */
   async getManifest() {
     try {
-      console.log("Getting MCP server manifest");
+      console.log("Getting MCP server manifest via API proxy");
 
-      // Call MCP manifest endpoint
-      const response = await axios.get(`${MCP_URL}/manifest`);
-
+      // Call API server endpoint instead of direct NetworkXMCP access
+      const response = await networkAPI.useTool("get_manifest", {});
+      
       console.log("MCP server manifest:", response.data);
-      return response.data;
+      return response.data.result;
     } catch (error) {
       console.error("Error getting MCP server manifest:", error);
       throw error;
@@ -151,10 +151,11 @@ class MCPClient {
    * @returns {Promise<object>} - Updated node colors
    */
   async highlightNodes(nodeIds, highlightColor = "#ff0000") {
-    return this.useTool("highlight_nodes", {
+    const response = await networkAPI.useTool("highlight_nodes", {
       node_ids: nodeIds,
       highlight_color: highlightColor,
     });
+    return response.data.result;
   }
 
   /**
@@ -170,11 +171,12 @@ class MCPClient {
     propertyValue,
     propertyMapping = {},
   ) {
-    return this.useTool("change_visual_properties", {
+    const response = await networkAPI.useTool("change_visual_properties", {
       property_type: propertyType,
       property_value: propertyValue,
       property_mapping: propertyMapping,
     });
+    return response.data.result;
   }
 
   /**
@@ -253,9 +255,10 @@ class MCPClient {
    * @returns {Promise<object>} - Node information
    */
   async getNodeInfo(nodeIds) {
-    return this.useTool("get_node_info", {
+    const response = await networkAPI.useTool("get_node_info", {
       node_ids: nodeIds,
     });
+    return response.data.result;
   }
 
   /**
@@ -264,7 +267,8 @@ class MCPClient {
    * @returns {Promise<object>} - Network data
    */
   async getNetworkData() {
-    return this.accessResource("/resources/network");
+    const response = await networkAPI.useTool("get_network_data", {});
+    return response.data.result;
   }
 
   /**
@@ -351,10 +355,11 @@ class MCPClient {
    * @returns {Promise<object>} - Loaded network data
    */
   async loadNetwork(userId, networkName = "default") {
-    return this.useTool("load_network", {
+    const response = await networkAPI.useTool("load_network", {
       user_id: userId,
       network_name: networkName,
     });
+    return response.data.result;
   }
 
   /**
@@ -370,18 +375,15 @@ class MCPClient {
     try {
       console.log(`Calling NetworkX endpoint via API proxy: ${endpoint}`);
 
-      let response;
-      if (method.toUpperCase() === "GET") {
-        response = await axios.get(`${API_URL}/proxy/networkx/${endpoint}`);
-      } else {
-        response = await axios.post(
-          `${API_URL}/proxy/networkx/${endpoint}`,
-          { arguments: data },
-        );
-      }
+      // Use networkAPI to call the endpoint via API proxy
+      const response = await networkAPI.useTool("proxy_call", {
+        endpoint: endpoint,
+        data: data,
+        method: method
+      });
 
       console.log(`NetworkX proxy response:`, response.data);
-      return response.data;
+      return response.data.result;
     } catch (error) {
       console.error(`Error calling NetworkX via proxy:`, error);
       throw error;
@@ -395,9 +397,10 @@ class MCPClient {
    * @returns {Promise<object>} - List of network names
    */
   async listUserNetworks(userId) {
-    return this.useTool("list_user_networks", {
+    const response = await networkAPI.useTool("list_user_networks", {
       user_id: userId,
     });
+    return response.data.result;
   }
 
   /**
@@ -408,10 +411,11 @@ class MCPClient {
    * @returns {Promise<object>} - Updated network positions
    */
   async applyCommunityLayout(algorithm = "louvain", layoutParams = {}) {
-    return this.useTool("apply_community_layout", {
+    const response = await networkAPI.useTool("apply_community_layout", {
       algorithm,
       layout_params: layoutParams,
     });
+    return response.data.result;
   }
 
   /**
@@ -421,9 +425,10 @@ class MCPClient {
    * @returns {Promise<object>} - Positions for each layout algorithm
    */
   async compareLayouts(layouts = ["spring", "circular", "kamada_kawai"]) {
-    return this.useTool("compare_layouts", {
+    const response = await networkAPI.useTool("compare_layouts", {
       layouts,
     });
+    return response.data.result;
   }
 
   /**
@@ -433,9 +438,10 @@ class MCPClient {
    * @returns {Promise<object>} - Recommended layout algorithm and parameters
    */
   async recommendLayout(question) {
-    return this.useTool("recommend_layout", {
+    const response = await networkAPI.useTool("recommend_layout", {
       question,
     });
+    return response.data.result;
   }
 
   /**
@@ -503,10 +509,11 @@ class MCPClient {
    * @returns {Promise<object>} - Node information and updated GraphML content
    */
   async graphmlNodeInfo(graphmlContent, nodeIds) {
-    return this.useTool("graphml_node_info", {
+    const response = await networkAPI.useTool("graphml_node_info", {
       graphml_content: graphmlContent,
       node_ids: nodeIds,
     });
+    return response.data.result;
   }
 
   /**
@@ -522,11 +529,12 @@ class MCPClient {
     nodeIds,
     highlightColor = "#ff0000",
   ) {
-    return this.useTool("graphml_highlight_nodes", {
+    const response = await networkAPI.useTool("graphml_highlight_nodes", {
       graphml_content: graphmlContent,
       node_ids: nodeIds,
       highlight_color: highlightColor,
     });
+    return response.data.result;
   }
 
   /**
@@ -555,9 +563,10 @@ class MCPClient {
    * @returns {Promise<object>} - Recommended layout algorithm and parameters
    */
   async recommendLayout(question) {
-    return this.useTool("recommend_layout", {
+    const response = await networkAPI.useTool("recommend_layout", {
       question,
     });
+    return response.data.result;
   }
 
   /**
@@ -576,7 +585,8 @@ class MCPClient {
       args.graphml_content = graphmlContent;
     }
 
-    return this.useTool("graphml_chat", args);
+    const response = await networkAPI.useTool("graphml_chat", args);
+    return response.data.result;
   }
 
   /**
@@ -700,9 +710,10 @@ class MCPClient {
       }
       
       // 従来の方法でチャットメッセージを処理
-      const result = await this.useTool("process_chat_message", {
+      const response = await networkAPI.useTool("process_chat_message", {
         message,
       });
+      const result = response.data.result;
 
       // 詳細なレスポンスログ出力（デバッグ用）
       console.log("Process chat message raw response:", JSON.stringify(result));

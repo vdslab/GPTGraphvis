@@ -77,6 +77,59 @@ async def proxy_get_sample_network(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error generating sample network: {str(e)}")
 
+@router.post("/tools/proxy_call")
+async def proxy_call_request(
+    request: Request,
+    current_user = Depends(auth.get_current_active_user)
+):
+    """
+    Generic proxy endpoint for forwarding any request to NetworkXMCP server.
+    This endpoint is used by the mcpClient.callNetworkXViaProxy method.
+    
+    Args:
+        request: Request object containing the endpoint, data, and method
+    """
+    try:
+        # Get request body
+        body = await request.json()
+        
+        # Extract arguments from request body
+        arguments = body.get("arguments", {})
+        endpoint = arguments.get("endpoint", "")
+        data = arguments.get("data", {})
+        method = arguments.get("method", "GET")
+        
+        print(f"Proxy: Handling proxy_call request for endpoint {endpoint}")
+        print(f"Proxy: Method: {method}, Data: {data}")
+        
+        # Forward request to NetworkXMCP server
+        async with httpx.AsyncClient() as client:
+            if method.upper() == "GET":
+                response = await client.get(
+                    f"{NETWORKX_MCP_URL}/{endpoint}",
+                    params=data,
+                    timeout=30.0
+                )
+            else:
+                response = await client.post(
+                    f"{NETWORKX_MCP_URL}/{endpoint}",
+                    json=data,
+                    timeout=30.0
+                )
+            
+            response.raise_for_status()
+            response_json = response.json()
+            
+            print(f"Proxy: Response from NetworkXMCP for proxy_call: {response_json}")
+            
+            return {
+                "result": response_json
+            }
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=500, detail=f"Error forwarding request to NetworkXMCP: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing request: {str(e)}")
+
 @router.post("/tools/{tool_name}")
 async def proxy_tool_request(
     tool_name: str,

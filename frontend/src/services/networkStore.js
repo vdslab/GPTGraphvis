@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import mcpClient from "./mcpClient";
 import { networkAPI } from "./api";
 
 // Helper function to generate colors based on centrality values
@@ -1046,11 +1045,9 @@ const useNetworkStore = create((set, get) => ({
     try {
       console.log("Exporting network as GraphML");
 
-      // Use MCP client to export network as GraphML
-      const result = await mcpClient.exportNetworkAsGraphML(
-        includePositions,
-        includeVisualProperties,
-      );
+      // Use networkAPI to export network as GraphML
+      const response = await networkAPI.exportNetworkAsGraphML();
+      const result = response.data.result;
 
       if (result && result.success) {
         console.log("Network exported as GraphML successfully");
@@ -1058,7 +1055,7 @@ const useNetworkStore = create((set, get) => ({
         set({ isLoading: false, error: null });
 
         // Return the GraphML string
-        return result.graphml;
+        return result.content;
       } else {
         throw new Error(result.error || "Failed to export network as GraphML");
       }
@@ -1086,7 +1083,8 @@ const useNetworkStore = create((set, get) => ({
       );
 
       // Export current network as GraphML
-      const exportResult = await mcpClient.exportNetworkAsGraphML();
+      const exportResponse = await networkAPI.exportNetworkAsGraphML();
+      const exportResult = exportResponse.data.result;
 
       if (!exportResult || !exportResult.success || !exportResult.content) {
         throw new Error("Failed to export network as GraphML");
@@ -1094,18 +1092,20 @@ const useNetworkStore = create((set, get) => ({
 
       // Use GraphML-based visual properties API
       const graphmlContent = exportResult.content;
-      const result = await mcpClient.graphmlVisualProperties(
+      const visualPropsResponse = await networkAPI.graphmlVisualProperties(
         graphmlContent,
         propertyType,
         propertyValue,
         propertyMapping,
       );
+      const result = visualPropsResponse.data.result;
 
       if (result && result.success && result.graphml_content) {
         // Parse the returned GraphML content
-        const importResult = await mcpClient.importGraphML(
+        const importResponse = await networkAPI.importGraphML(
           result.graphml_content,
         );
+        const importResult = importResponse.data.result;
 
         if (importResult && importResult.success) {
           // Update network state with new data from GraphML
@@ -1133,12 +1133,13 @@ const useNetworkStore = create((set, get) => ({
 
       // Fall back to original implementation for resilience
       try {
-        // Use legacy MCP client
-        const result = await mcpClient.useTool("change_visual_properties", {
+        // Use networkAPI instead of legacy MCP client
+        const response = await networkAPI.useTool("change_visual_properties", {
           property_type: propertyType,
           property_value: propertyValue,
           property_mapping: propertyMapping,
         });
+        const result = response.data.result;
 
         if (result && result.success) {
           // Update visual properties in state
