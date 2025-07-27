@@ -135,9 +135,14 @@ async def create_message(
     if db_conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
     
+    # メッセージが辞書型の場合は文字列に変換
+    message_content = message.content
+    if isinstance(message_content, dict):
+        message_content = json.dumps(message_content)
+        
     # Save user message
     db_message = models.ChatMessage(
-        content=message.content,
+        content=message_content,
         role="user",
         user_id=current_user.id,
         conversation_id=conversation_id
@@ -156,11 +161,18 @@ async def create_message(
     
     return db_message
 
-async def process_and_respond(db: Session, conversation_id: int, user_message_content: str):
+async def process_and_respond(db: Session, conversation_id: int, user_message_content):
     """
     Process user message, interact with LLM and NetworkXMCP, and save the response.
     This version handles the full conversation loop including tool calls and feedback.
     """
+    # メッセージが辞書型の場合は文字列に変換
+    if isinstance(user_message_content, dict):
+        user_message_content = json.dumps(user_message_content)
+    # メッセージが文字列でない場合も文字列に変換する
+    elif not isinstance(user_message_content, str):
+        user_message_content = str(user_message_content)
+        
     db_conversation = db.query(models.Conversation).get(conversation_id)
     if not db_conversation:
         print(f"Error: Conversation with ID {conversation_id} not found.")
@@ -269,6 +281,13 @@ async def process_chat(
         message_content = body.get("message", "")
         conversation_id = body.get("conversation_id") # Allow specifying conversation
 
+        # メッセージが辞書型の場合は文字列に変換
+        if isinstance(message_content, dict):
+            message_content = json.dumps(message_content)
+        # メッセージが文字列でない場合も文字列に変換する
+        elif not isinstance(message_content, str):
+            message_content = str(message_content)
+        
         if not message_content:
             raise HTTPException(status_code=400, detail="Message is required")
 

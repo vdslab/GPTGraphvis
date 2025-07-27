@@ -128,10 +128,24 @@ async def _process_with_gemini(messages: List[Dict[str, str]]) -> Dict[str, Any]
     user_prompt = gemini_history.pop().parts[0].text
 
     try:
+        # Gemini用にツール定義を変換
+        gemini_tools = []
+        for tool in TOOLS_DEFINITION:
+            gemini_tool = {
+                "function_declarations": [
+                    {
+                        "name": tool["name"],
+                        "description": tool["description"],
+                        "parameters": tool["parameters"]
+                    }
+                ]
+            }
+            gemini_tools.append(gemini_tool)
+
         chat = gemini_client.chats.create(model="gemini-2.5-pro", history=gemini_history)
         response = chat.send_message(
             user_prompt,
-            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=TOOLS_DEFINITION)
+            config=types.GenerateContentConfig(system_instruction=SYSTEM_PROMPT, tools=gemini_tools)
         )
 
         if response.function_calls:

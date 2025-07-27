@@ -15,10 +15,7 @@ from .network_tools import (
 )
 
 from .centrality_chat import (
-    process_chat_message,
-    generate_network_info_response,
-    calculate_centrality_response,
-    change_layout_response
+    suggest_centrality_from_query
 )
 
 __all__ = [
@@ -28,8 +25,5 @@ __all__ = [
     'export_network_as_graphml',
     'get_network_info',
     'detect_communities',
-    'process_chat_message',
-    'generate_network_info_response',
-    'calculate_centrality_response',
-    'change_layout_response'
+    'suggest_centrality_from_query'
 ]
