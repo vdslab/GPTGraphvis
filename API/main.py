@@ -11,7 +11,6 @@ from database import engine, Base
 from routers import auth as auth_router
 from routers import chat as chat_router
 from routers import network as network_router
-from routers import proxy as proxy_router
 import auth
 
 # WebSocket接続マネージャー
@@ -78,7 +77,6 @@ app.add_middleware(
 app.include_router(auth_router.router)
 app.include_router(chat_router.router)
 app.include_router(network_router.router)
-app.include_router(proxy_router.router)
 
 # WebSocket接続マネージャーをapp.stateに格納
 app.state.ws_manager = ConnectionManager()
