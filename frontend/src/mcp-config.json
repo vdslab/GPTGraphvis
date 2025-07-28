@@ -181,20 +181,6 @@
           "parameters": {}
         },
         {
-          "name": "get_node_info",
-          "description": "Get information about specific nodes in the network",
-          "parameters": {
-            "node_ids": {
-              "type": "array",
-              "description": "List of node IDs to get information for",
-              "items": {
-                "type": "string"
-              }
-            }
-          },
-          "required": ["node_ids"]
-        },
-        {
           "name": "save_network",
           "description": "Save the current network data for a user",
           "parameters": {
@@ -234,50 +220,6 @@
             }
           },
           "required": ["user_id"]
-        },
-        {
-          "name": "apply_community_layout",
-          "description": "Apply a layout algorithm based on community detection",
-          "parameters": {
-            "algorithm": {
-              "type": "string",
-              "description": "Community detection algorithm to use",
-              "enum": ["louvain", "greedy_modularity"]
-            },
-            "layout_params": {
-              "type": "object",
-              "description": "Parameters for the layout algorithm"
-            }
-          },
-          "required": []
-        },
-        {
-          "name": "compare_layouts",
-          "description": "Compare different layout algorithms for the current network",
-          "parameters": {
-            "layouts": {
-              "type": "array",
-              "description": "List of layout algorithms to compare",
-              "items": {
-                "type": "string",
-                "enum": [
-                  "spring",
-                  "circular",
-                  "random",
-                  "spectral",
-                  "shell",
-                  "spiral",
-                  "kamada_kawai",
-                  "fruchterman_reingold",
-                  "bipartite",
-                  "multipartite",
-                  "planar",
-                  "community"
-                ]
-              }
-            }
-          },
-          "required": []
         },
         {
           "name": "get_sample_network",

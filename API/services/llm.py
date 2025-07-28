@@ -81,20 +81,6 @@ TOOLS_DEFINITION = [
         "description": "Retrieves basic statistics about the network, such as the number of nodes and edges, density, etc.",
         "parameters": {}
     },
-    {
-        "name": "suggest_centrality",
-        "description": "When a user asks an ambiguous question about 'importance' or 'centrality', call this tool to get suggestions and explanations for different centrality metrics to ask the user.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "user_query": {
-                    "type": "string",
-                    "description": "The user's original ambiguous query."
-                }
-            },
-            "required": ["user_query"]
-        }
-    }
 ]
 
 # --- System Prompt ---
@@ -106,11 +92,7 @@ You have access to a set of tools to perform network operations. When a user ask
 
 1.  **Analyze User Request:** Understand the user's intent.
 2.  **Tool Selection:** If the request matches a tool's capability, you should respond with a tool call.
-3.  **Clarification and Dialogue (Crucial for Centrality):**
-    *   If the user asks an ambiguous question about "importance," "influence," or "centrality," you should call the `suggest_centrality` tool.
-    *   Use the information returned by `suggest_centrality` to formulate a clarifying question to the user.
-    *   Once the user confirms which centrality they want, then you can call the `calculate_centrality` tool.
-4.  **General Conversation:** If the user's message is a greeting or a question that cannot be answered by a tool, respond in a helpful and conversational manner.
+3.  **General Conversation:** If the user's message is a greeting or a question that cannot be answered by a tool, respond in a helpful and conversational manner.
 
 **Your Final Output should be either a direct text response OR a tool call.**
 """
