@@ -14,7 +14,11 @@ import models
 import schemas
 import auth
 from database import get_db
-from . import proxy
+import os
+import httpx
+
+# NetworkXMCPサーバーとの通信用URL
+NETWORKX_MCP_URL = os.environ.get("NETWORKX_MCP_URL", "http://networkx-mcp:8001")
 
 router = APIRouter(
     prefix="/network",
@@ -100,7 +104,29 @@ async def upload_new_network(
         graphml_content_str = graphml_content_bytes.decode("utf-8")
 
         # Call NetworkXMCP to convert/normalize the GraphML
-        normalized_graphml_str = await proxy.convert_graphml_through_proxy(graphml_content_str)
+        async with httpx.AsyncClient() as client:
+            url = f"{NETWORKX_MCP_URL}/tools/convert_graphml"
+            payload = {"graphml_content": graphml_content_str}
+            print(f"Sending GraphML to NetworkXMCP for conversion: {url}")
+            
+            response = await client.post(url, json=payload, timeout=60.0)
+            print(f"Response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                error_msg = f"Error from NetworkXMCP: {response.text}"
+                print(f"Error: {error_msg}")
+                raise HTTPException(status_code=500, detail=error_msg)
+            
+            result = response.json()
+            print(f"Response from NetworkXMCP: {result}")
+            
+            if not result.get("success"):
+                error_msg = result.get("error", "Unknown error from NetworkXMCP")
+                print(f"Error: {error_msg}")
+                raise HTTPException(status_code=500, detail=error_msg)
+            
+            normalized_graphml_str = result.get("graphml_content", "")
+            print(f"Normalized GraphML length: {len(normalized_graphml_str)}")
 
         # Create a new conversation
         db_conversation = models.Conversation(
@@ -161,7 +187,29 @@ async def upload_and_overwrite_network(
         graphml_content_str = graphml_content_bytes.decode("utf-8")
 
         # Call NetworkXMCP to convert/normalize the GraphML
-        normalized_graphml_str = await proxy.convert_graphml_through_proxy(graphml_content_str)
+        async with httpx.AsyncClient() as client:
+            url = f"{NETWORKX_MCP_URL}/tools/convert_graphml"
+            payload = {"graphml_content": graphml_content_str}
+            print(f"Sending GraphML to NetworkXMCP for conversion: {url}")
+            
+            response = await client.post(url, json=payload, timeout=60.0)
+            print(f"Response status: {response.status_code}")
+            
+            if response.status_code != 200:
+                error_msg = f"Error from NetworkXMCP: {response.text}"
+                print(f"Error: {error_msg}")
+                raise HTTPException(status_code=500, detail=error_msg)
+            
+            result = response.json()
+            print(f"Response from NetworkXMCP: {result}")
+            
+            if not result.get("success"):
+                error_msg = result.get("error", "Unknown error from NetworkXMCP")
+                print(f"Error: {error_msg}")
+                raise HTTPException(status_code=500, detail=error_msg)
+            
+            normalized_graphml_str = result.get("graphml_content", "")
+            print(f"Normalized GraphML length: {len(normalized_graphml_str)}")
 
         # Update the network content
         db_network.graphml_content = normalized_graphml_str

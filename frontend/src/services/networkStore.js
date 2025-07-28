@@ -352,54 +352,6 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
-  // Get layout recommendation using API
-  getLayoutRecommendation: async (description, purpose) => {
-    set({ isLoading: true, error: null, recommendation: null });
-    try {
-      // Use API to get layout recommendation
-      const response = await networkAPI.useTool("recommend_layout", {
-        description,
-        purpose,
-      });
-      const result = response.data.result;
-
-      if (result && result.success) {
-        set({
-          recommendation: result.recommendation,
-          isLoading: false,
-          error: null,
-        });
-        return result.recommendation;
-      } else {
-        throw new Error(result.error || "Layout recommendation failed");
-      }
-    } catch (error) {
-      console.error("Error getting layout recommendation:", error);
-      set({
-        isLoading: false,
-        error: error.message || "Layout recommendation failed",
-        recommendation: null,
-      });
-      return null;
-    }
-  },
-
-  // Apply recommended layout
-  applyRecommendedLayout: () => {
-    const { recommendation } = get();
-
-    if (!recommendation) {
-      set({ error: "No recommendation available", isLoading: false });
-      return false;
-    }
-
-    set({
-      layout: recommendation.recommended_layout,
-      layoutParams: recommendation.recommended_parameters || {},
-    });
-
-    return get().calculateLayout();
-  },
 
   // Load sample network using API
   loadSampleNetwork: async () => {
@@ -667,147 +619,6 @@ const useNetworkStore = create((set, get) => ({
     */
   },
 
-  // Apply centrality metrics using GraphML-based API
-  applyCentrality: async (centralityType) => {
-    const { nodes } = get();
-
-    // ノードが存在しない場合、サンプルネットワークを自動的に読み込む
-    if (!nodes.length) {
-      console.log("No nodes found, loading sample network before applying centrality");
-      try {
-        const sampleLoaded = await get().loadSampleNetwork();
-        if (!sampleLoaded) {
-          set({ error: "Failed to load sample network", isLoading: false });
-          return false;
-        }
-        // サンプルネットワークが読み込まれたので、ノードリストを更新
-        const updatedNodes = get().nodes;
-        if (!updatedNodes.length) {
-          set({ error: "Sample network has no nodes", isLoading: false });
-          return false;
-        }
-      } catch (sampleError) {
-        console.error("Error loading sample network:", sampleError);
-        set({ error: "Failed to load sample network", isLoading: false });
-        return false;
-      }
-    }
-
-    set({ isLoading: true, error: null });
-    try {
-      console.log(
-        `Calculating ${centralityType} centrality using GraphML-based API`,
-      );
-
-      // Export current network as GraphML
-      const exportResponse = await networkAPI.exportNetworkAsGraphML();
-      const exportResult = exportResponse.data.result;
-
-      if (!exportResult || !exportResult.success || !exportResult.content) {
-        throw new Error("Failed to export network as GraphML");
-      }
-
-      // Use GraphML-based centrality API
-      const graphmlContent = exportResult.content;
-      const centralityResponse = await networkAPI.graphmlCentrality(
-        graphmlContent,
-        centralityType,
-      );
-      // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
-      const result = centralityResponse.data.result;
-
-      if (result && result.success && result.graphml_content) {
-        // Parse the returned GraphML content
-        // const importResponse = await networkAPI.importGraphML(
-        //   result.graphml_content,
-        // );
-        // const importResult = importResponse.data.result;
-
-        // if (importResult && importResult.success) {
-        //   // Extract centrality values from node attributes
-        //   const centralityValues = {};
-        //   const positions = importResult.nodes || [];
-
-        //   positions.forEach((node) => {
-        //     if (node.centrality_value) {
-        //       centralityValues[node.id] = parseFloat(node.centrality_value);
-        //     }
-        //   });
-
-        //   // Update network state with new positions from GraphML
-        //   set({
-        //     positions,
-        //     centrality: centralityValues,
-        //     centralityType,
-        //     isLoading: false,
-        //     error: null,
-        //   });
-        //   return true;
-        // } else {
-        //   throw new Error(
-        //     "Failed to import updated GraphML with centrality values",
-        //   );
-        // }
-        console.warn("Skipping GraphML import in applyCentrality to avoid issues. This needs to be refactored.");
-        set({ isLoading: false });
-        return true;
-      } else {
-        throw new Error(result?.error || "Centrality calculation failed");
-      }
-    } catch (error) {
-      console.error("Error calculating centrality:", error);
-
-      // Fall back to original implementation for resilience
-      try {
-        // NetworkX MCP サーバーを使用して中心性を計算
-        const response = await networkAPI.calculateCentrality(centralityType);
-        const result = response.data.result;
-
-        if (result && result.success) {
-          // 計算された中心性値を取得
-          const centralityValues = result.centrality_values || {};
-
-          // 最大値を計算（正規化のため）
-          const maxValue = Math.max(...Object.values(centralityValues), 1);
-
-          // ノードの位置情報を更新（サイズと色を中心性値に基づいて設定）
-          const updatedPositions = get().positions.map((node) => {
-            const value = centralityValues[node.id] || 0;
-            // サイズは5〜15の範囲でスケーリング
-            const normalizedSize = 5 + (value / maxValue) * 10;
-
-            return {
-              ...node,
-              size: normalizedSize,
-              color: getCentralityColor(value, maxValue),
-            };
-          });
-
-          // 状態を更新
-          set({
-            positions: updatedPositions,
-            centrality: centralityValues,
-            centralityType,
-            isLoading: false,
-            error: null,
-          });
-
-          return true;
-        }
-      } catch (fallbackError) {
-        console.error(
-          "Fallback centrality calculation also failed:",
-          fallbackError,
-        );
-      }
-
-      set({
-        isLoading: false,
-        error: error.message || "Centrality calculation failed",
-      });
-      return false;
-    }
-  },
 
   // Apply centrality values to nodes
   applyCentralityValues: (centralityValues, centralityType) => {
@@ -913,84 +724,25 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
-  // Recommend layout based on user's question and apply it
-  recommendLayoutAndApply: async (question) => {
-    set({ isLoading: true, error: null });
-    try {
-      console.log("Recommending layout based on question:", question);
-
-      // Use API to get layout recommendation
-      const response = await networkAPI.useTool("recommend_layout", {
-        question,
-      });
-      const result = response.data.result;
-
-      if (result && result.success) {
-        console.log("Layout recommendation:", result);
-
-        // Store recommendation
-        set({
-          recommendation: {
-            recommended_layout: result.recommended_layout,
-            recommended_parameters: result.recommended_parameters,
-            recommendation_reason: result.recommendation_reason,
-          },
-          isLoading: false,
-        });
-
-        // Apply recommended layout
-        const layoutType = result.recommended_layout;
-        const layoutParams = result.recommended_parameters || {};
-
-        // Update layout state
-        set({
-          layout: layoutType,
-          layoutParams: layoutParams,
-        });
-
-        // Apply the layout
-        return get().calculateLayout();
-      } else {
-        throw new Error(result.error || "Failed to get layout recommendation");
-      }
-    } catch (error) {
-      console.error("Failed to recommend layout:", error);
-
-      set({
-        isLoading: false,
-        error: error.message || "Failed to recommend layout",
-      });
-      return false;
-    }
-  },
 
   // Export network as GraphML
-  exportAsGraphML: async (
-    includePositions = true,
-    includeVisualProperties = true,
-  ) => {
+  exportAsGraphML: async () => {
+    const { currentConversationId } = useChatStore.getState();
+    if (!currentConversationId) {
+      set({ error: "No active conversation selected." });
+      return null;
+    }
+    // TODO: conversationIdからnetworkIdを取得する処理が必要
+    const networkId = currentConversationId; 
+
     set({ isLoading: true, error: null });
     try {
       console.log("Exporting network as GraphML");
-
-      // Use networkAPI to export network as GraphML
-      const response = await networkAPI.exportNetworkAsGraphML();
-      // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
-      const result = response.data.result;
-
-      if (result && result.success) {
-        console.log("Network exported as GraphML successfully");
-
-        set({ isLoading: false, error: null });
-
-        // Return the GraphML string
-        return result.content;
-      } else {
-        throw new Error(result.error || "Failed to export network as GraphML");
-      }
+      const response = await networkAPI.exportNetworkAsGraphML(networkId);
+      set({ isLoading: false, error: null });
+      return response.data;
     } catch (error) {
       console.error("Failed to export network as GraphML:", error);
-
       set({
         isLoading: false,
         error: error.message || "Failed to export network as GraphML",
@@ -999,316 +751,48 @@ const useNetworkStore = create((set, get) => ({
     }
   },
 
-  // Change visual properties of nodes or edges using GraphML-based API
-  changeVisualProperties: async (
-    propertyType,
-    propertyValue,
-    propertyMapping = {},
-  ) => {
-    set({ isLoading: true, error: null });
-    try {
-      console.log(
-        `Changing visual property ${propertyType} to ${propertyValue} using GraphML API`,
-      );
-
-      // Export current network as GraphML
-      const exportResponse = await networkAPI.exportNetworkAsGraphML();
-      const exportResult = exportResponse.data.result;
-
-      if (!exportResult || !exportResult.success || !exportResult.content) {
-        throw new Error("Failed to export network as GraphML");
-      }
-
-      // Use GraphML-based visual properties API
-      const graphmlContent = exportResult.content;
-      const visualPropsResponse = await networkAPI.graphmlVisualProperties(
-        graphmlContent,
-        propertyType,
-        propertyValue,
-        propertyMapping,
-      );
-      // APIサーバーのプロキシエンドポイントからのレスポンスは response.data.result の形式
-      const result = visualPropsResponse.data.result;
-
-      if (result && result.success && result.graphml_content) {
-        // Parse the returned GraphML content
-        // const importResponse = await networkAPI.importGraphML(
-        //   result.graphml_content,
-        // );
-        // const importResult = importResponse.data.result;
-
-        // if (importResult && importResult.success) {
-        //   // Update network state with new data from GraphML
-        //   set((state) => ({
-        //     positions: importResult.nodes || [],
-        //     edges: importResult.edges || [],
-        //     visualProperties: {
-        //       ...state.visualProperties,
-        //       [propertyType]: propertyValue,
-        //     },
-        //     isLoading: false,
-        //     error: null,
-        //   }));
-        //   return true;
-        // } else {
-        //   throw new Error(
-        //     "Failed to import updated GraphML with visual property changes",
-        //   );
-        // }
-        console.warn("Skipping GraphML import in changeVisualProperties to avoid issues. This needs to be refactored.");
-        set({ isLoading: false });
-        return true;
-      } else {
-        throw new Error(result?.error || "Visual property change failed");
-      }
-    } catch (error) {
-      console.error("Failed to change visual properties:", error);
-
-      // Fall back to original implementation for resilience
-      try {
-        // Use networkAPI instead of legacy MCP client
-        const response = await networkAPI.useTool("change_visual_properties", {
-          property_type: propertyType,
-          property_value: propertyValue,
-          property_mapping: propertyMapping,
-        });
-        const result = response.data.result;
-
-        if (result && result.success) {
-          // Update visual properties in state
-          set((state) => ({
-            visualProperties: {
-              ...state.visualProperties,
-              [propertyType]: propertyValue,
-            },
-            isLoading: false,
-            error: null,
-          }));
-
-          // If it's a node property, update positions
-          if (propertyType === "node_size" || propertyType === "node_color") {
-            const attribute = propertyType.split("_")[1]; // 'size' or 'color'
-            const updatedPositions = get().positions.map((node) => ({
-              ...node,
-              [attribute]:
-                node.id in propertyMapping
-                  ? propertyMapping[node.id]
-                  : propertyValue,
-            }));
-
-            set({ positions: updatedPositions });
-          }
-
-          // If it's an edge property, update edges
-          if (propertyType === "edge_width" || propertyType === "edge_color") {
-            const attribute = propertyType.split("_")[1]; // 'width' or 'color'
-            const updatedEdges = get().edges.map((edge) => {
-              const edgeKey = `${edge.source}-${edge.target}`;
-              return {
-                ...edge,
-                [attribute]:
-                  edgeKey in propertyMapping
-                    ? propertyMapping[edgeKey]
-                    : propertyValue,
-              };
-            });
-
-            set({ edges: updatedEdges });
-          }
-
-          return true;
-        }
-      } catch (fallbackError) {
-        console.error(
-          "Fallback visual property change also failed:",
-          fallbackError,
-        );
-      }
-
-      set({
-        isLoading: false,
-        error: error.message || "Failed to change visual properties",
-      });
-      return false;
-    }
-  },
 
   // Get network information
   getNetworkInfo: async () => {
-    // 無限ループ検出のための静的変数
-    if (!getNetworkInfo.callCount) {
-      getNetworkInfo.callCount = 0;
+    const { currentConversationId } = useChatStore.getState();
+    if (!currentConversationId) {
+      set({ error: "No active conversation selected." });
+      return null;
     }
-    getNetworkInfo.callCount++;
-    
-    // 短時間に多数の呼び出しがある場合は無限ループと判断して処理をスキップ
-    if (getNetworkInfo.callCount > 5) {
-      console.log("Too many getNetworkInfo calls detected, possible infinite loop. Skipping...");
-      getNetworkInfo.callCount = 0; // カウンターをリセット
-      set({ isLoading: false }); // 確実にローディング状態を解除
-      return {
-        success: true,
-        network_info: {
-          has_network: true,
-          current_layout: "spring",
-          current_centrality: null,
-          num_nodes: 11,
-          num_edges: 10,
-          density: 0.2,
-          is_connected: true,
-          num_components: 1,
-          avg_degree: 1.82,
-          clustering_coefficient: 0,
-        },
-      };
-    }
-    
-    // isLoadingをtrueに設定する前に現在の状態を取得
-    const currentState = get();
-    const currentNodes = currentState.nodes;
-    const currentEdges = currentState.edges;
-    const currentPositions = currentState.positions;
-    const initialLoadComplete = currentState.initialLoadComplete;
-    
-    console.log("Getting network information - current state:", {
-      nodesLength: currentNodes?.length || 0,
-      edgesLength: currentEdges?.length || 0,
-      positionsLength: currentPositions?.length || 0,
-      initialLoadComplete: initialLoadComplete || false
-    });
-    
-    // 初期ロードが完了している場合、またはノードとエッジが既に存在する場合は、それらの情報を返す
-    if (initialLoadComplete || (currentNodes?.length > 0 && currentEdges?.length > 0 && currentPositions?.length > 0)) {
-      console.log("初期ロードが完了しているか、既存のネットワークデータを使用します");
-      getNetworkInfo.callCount = 0; // カウンターをリセット
-      return {
-        success: true,
-        network_info: {
-          has_network: true,
-          current_layout: currentState.layout || "spring",
-          current_centrality: currentState.centrality,
-          num_nodes: currentNodes.length,
-          num_edges: currentEdges.length,
-          density: currentEdges.length / (currentNodes.length * (currentNodes.length - 1) / 2),
-          is_connected: true,
-          num_components: 1,
-          avg_degree: (2 * currentEdges.length) / currentNodes.length,
-          clustering_coefficient: 0,
-          initialLoadComplete: initialLoadComplete
-        },
-      };
-    }
-    
-    console.log("ネットワークが存在しません。サンプルネットワークを生成します。");
+    // TODO: conversationIdからnetworkIdを取得する処理が必要
+    const networkId = currentConversationId;
+
     set({ isLoading: true, error: null });
-    
     try {
-      // サンプルネットワークを直接生成して状態を更新
-      const sampleNodes = [];
-      const sampleEdges = [];
-      const samplePositions = [];
-      
-      // 中心ノード
-      sampleNodes.push({
-        id: "0",
-        label: "Center Node",
-      });
-      
-      // 中心ノードの位置
-      samplePositions.push({
-        id: "0",
-        label: "Center Node",
-        x: 0,
-        y: 0,
-        size: 8,
-        color: "#1d4ed8",
-      });
-      
-      // 10個の衛星ノード
-      for (let i = 1; i <= 10; i++) {
-        sampleNodes.push({
-          id: i.toString(),
-          label: `Node ${i}`,
+      const response = await networkAPI.getNetworkCytoscape(networkId);
+      const cytoData = response.data;
+      if (cytoData && cytoData.elements) {
+        const nodes = cytoData.elements.nodes.map(n => n.data);
+        const edges = cytoData.elements.edges.map(e => e.data);
+        const positions = cytoData.elements.nodes.map(n => ({ ...n.data, ...n.position }));
+        set({
+          nodes,
+          edges,
+          positions,
+          isLoading: false,
+          error: null,
+          initialLoadComplete: true,
         });
-        
-        // 中心ノードとの接続
-        sampleEdges.push({
-          source: "0",
-          target: i.toString(),
-        });
-        
-        // 円形に配置
-        const angle = (i - 1) * (2 * Math.PI / 10);
-        samplePositions.push({
-          id: i.toString(),
-          label: `Node ${i}`,
-          x: Math.cos(angle),
-          y: Math.sin(angle),
-          size: 5,
-          color: "#1d4ed8",
-        });
+        return {
+          success: true,
+          network_info: {
+            has_network: true,
+            num_nodes: nodes.length,
+            num_edges: edges.length,
+          },
+        };
+      } else {
+        throw new Error("Failed to retrieve valid Cytoscape data.");
       }
-      
-      // 状態を直接更新（同期的に実行）
-      set({
-        nodes: sampleNodes,
-        edges: sampleEdges,
-        positions: samplePositions,
-        layout: "spring",
-        isLoading: false,
-        error: null,
-        initialLoadComplete: true // 初期ロードが完了したことを示すフラグを設定
-      });
-      
-      // 更新後の状態を確認
-      const updatedState = get();
-      console.log("Sample network generated in getNetworkInfo:", {
-        nodesLength: updatedState.nodes?.length || 0,
-        edgesLength: updatedState.edges?.length || 0,
-        positionsLength: updatedState.positions?.length || 0,
-        initialLoadComplete: updatedState.initialLoadComplete
-      });
-      
-      getNetworkInfo.callCount = 0; // カウンターをリセット
-      
-      // 更新された状態を返す
-      return {
-        success: true,
-        network_info: {
-          has_network: true,
-          current_layout: "spring",
-          current_centrality: null,
-          num_nodes: 11,
-          num_edges: 10,
-          density: 0.2,
-          is_connected: true,
-          num_components: 1,
-          avg_degree: 1.82,
-          clustering_coefficient: 0,
-          initialLoadComplete: true
-        },
-      };
     } catch (error) {
       console.error("Error fetching network info:", error);
-      
-      // エラー発生時のフォールバック
-      set({ isLoading: false, error: null });
-      getNetworkInfo.callCount = 0; // カウンターをリセット
-      return {
-        success: true,
-        network_info: {
-          has_network: true,
-          current_layout: "spring",
-          current_centrality: null,
-          num_nodes: 11, // ダミーデータ
-          num_edges: 10, // ダミーデータ
-          density: 0.2,
-          is_connected: true,
-          num_components: 1,
-          avg_degree: 1.82,
-          clustering_coefficient: 0,
-        },
-      };
+      set({ isLoading: false, error: error.message });
+      return null;
     }
   },
 }));

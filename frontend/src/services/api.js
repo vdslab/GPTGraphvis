@@ -125,6 +125,12 @@ export const networkAPI = {
     });
   },
   // プロキシ経由の古い関数は仕様書に準拠するため削除されました
+  exportNetworkAsGraphML: (networkId) => {
+    console.log("Exporting network as GraphML:", networkId);
+    return axios.get(`${API_URL}/network/${networkId}/export`, {
+      responseType: 'blob',
+    });
+  },
 };
 
 // Network Chat API endpoints
