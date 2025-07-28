@@ -59,9 +59,6 @@ class CentralityParams(GraphData):
     centrality_type: str = Field("degree", description="The type of centrality to calculate.")
     centrality_params: Dict[str, Any] = Field({}, description="Parameters for the centrality calculation.")
 
-class CentralitySuggestionParams(BaseModel):
-    user_query: str = Field(..., description="The user's query about node importance.")
-
 # GraphMLインポート用のPydanticモデル
 class GraphMLImportParams(BaseModel):
     graphml_content: str = Field(..., description="GraphML content to import.")
@@ -333,19 +330,6 @@ async def api_export_graphml(params: GraphMLExportParams):
         error_msg = f"Error exporting GraphML: {str(e)}"
         logger.error(f"API: Unexpected error: {error_msg}")
         raise HTTPException(status_code=500, detail=error_msg)
-
-@app.post("/tools/suggest_centrality", response_model=Dict[str, Any])
-async def api_suggest_centrality(params: CentralitySuggestionParams):
-    """
-    ユーザーのクエリに基づいて、適切な中心性指標を提案する
-    """
-    try:
-        from tools.centrality_chat import suggest_centrality_from_query
-        result = suggest_centrality_from_query(params.user_query)
-        return {"result": result}
-    except Exception as e:
-        logger.error(f"Error suggesting centrality: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
