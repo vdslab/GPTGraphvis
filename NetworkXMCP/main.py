@@ -147,8 +147,7 @@ async def get_mcp_info():
         "tools": [
             {"name": "get_sample_network", "description": "Get a sample network in GraphML format"},
             {"name": "change_layout", "description": "Change the layout algorithm for a given network"},
-            {"name": "calculate_centrality", "description": "Calculate centrality metrics for a given network"},
-            {"name": "suggest_centrality", "description": "Suggests appropriate centrality measures based on a user's query."}
+            {"name": "calculate_centrality", "description": "Calculate centrality metrics for a given network"}
         ]
     }
 

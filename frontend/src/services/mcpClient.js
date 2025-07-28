@@ -248,28 +248,7 @@ class MCPClient {
     }
   }
 
-  /**
-   * Get information about specific nodes in the network.
-   *
-   * @param {string[]} nodeIds - List of node IDs to get information for
-   * @returns {Promise<object>} - Node information
-   */
-  async getNodeInfo(nodeIds) {
-    const response = await networkAPI.useTool("get_node_info", {
-      node_ids: nodeIds,
-    });
-    return response.data.result;
-  }
 
-  /**
-   * Get the current network data.
-   *
-   * @returns {Promise<object>} - Network data
-   */
-  async getNetworkData() {
-    const response = await networkAPI.useTool("get_network_data", {});
-    return response.data.result;
-  }
 
   /**
    * Get a sample network.
@@ -403,33 +382,7 @@ class MCPClient {
     return response.data.result;
   }
 
-  /**
-   * Apply a layout algorithm based on community detection.
-   *
-   * @param {string} algorithm - Community detection algorithm to use
-   * @param {object} layoutParams - Parameters for the layout algorithm
-   * @returns {Promise<object>} - Updated network positions
-   */
-  async applyCommunityLayout(algorithm = "louvain", layoutParams = {}) {
-    const response = await networkAPI.useTool("apply_community_layout", {
-      algorithm,
-      layout_params: layoutParams,
-    });
-    return response.data.result;
-  }
 
-  /**
-   * Compare different layout algorithms for the current network.
-   *
-   * @param {string[]} layouts - List of layout algorithms to compare
-   * @returns {Promise<object>} - Positions for each layout algorithm
-   */
-  async compareLayouts(layouts = ["spring", "circular", "kamada_kawai"]) {
-    const response = await networkAPI.useTool("compare_layouts", {
-      layouts,
-    });
-    return response.data.result;
-  }
 
   /**
    * Recommend a layout algorithm based on user's question or network properties.
@@ -545,38 +498,7 @@ class MCPClient {
       .then(response => response.data.result);
   }
 
-  /**
-   * Recommend a layout algorithm based on user's question or network properties.
-   *
-   * @param {string} question - User's question about visualization
-   * @returns {Promise<object>} - Recommended layout algorithm and parameters
-   */
-  async recommendLayout(question) {
-    const response = await networkAPI.useTool("recommend_layout", {
-      question,
-    });
-    return response.data.result;
-  }
 
-  /**
-   * Process a chat message with GraphML data.
-   *
-   * @param {string} message - The chat message to process
-   * @param {string} graphmlContent - GraphML format string (optional)
-   * @returns {Promise<object>} - Processing result and updated GraphML content
-   */
-  async graphmlChat(message, graphmlContent = null) {
-    const args = {
-      message: message,
-    };
-
-    if (graphmlContent) {
-      args.graphml_content = graphmlContent;
-    }
-
-    const response = await networkAPI.useTool("graphml_chat", args);
-    return response.data.result;
-  }
 
   /**
    * Process a chat message and execute network operations.
@@ -597,108 +519,6 @@ class MCPClient {
         keyword => message.toLowerCase().includes(keyword)
       );
       
-      // GraphMLベースのチャット処理を試みる
-      if (isCentralityQuery) {
-        try {
-          console.log("Detected centrality query, trying GraphML-based processing");
-          
-          // 現在のネットワークをGraphMLとしてエクスポート
-          let exportResult;
-          try {
-            exportResult = await this.exportNetworkAsGraphML();
-          } catch (exportError) {
-            console.warn("Failed to export network as GraphML:", exportError);
-            console.log("Attempting to load sample network before processing centrality query");
-            
-            // サンプルネットワークを読み込む
-            try {
-              const sampleNetwork = await this.getSampleNetwork();
-              if (sampleNetwork && sampleNetwork.success) {
-                console.log("Successfully loaded sample network for centrality processing");
-                // サンプルネットワークを読み込んだ後、再度エクスポートを試みる
-                exportResult = await this.exportNetworkAsGraphML();
-              } else {
-                throw new Error("Failed to load sample network");
-              }
-            } catch (sampleError) {
-              console.error("Failed to load sample network:", sampleError);
-              throw new Error("No network available for centrality calculation");
-            }
-          }
-          
-          if (exportResult && exportResult.success && exportResult.content) {
-            console.log("Successfully exported network as GraphML for chat processing");
-            
-            // GraphMLベースのチャット処理を実行
-            const result = await this.graphmlChat(message, exportResult.content);
-            
-            if (result && result.success) {
-              console.log("GraphML chat processing successful");
-              
-              // GraphMLコンテンツが返された場合、インポートして状態を更新
-              if (result.graphml_content) {
-                console.log("Importing updated GraphML from chat response");
-                // const importResult = await this.importGraphML(result.graphml_content);
-                console.warn("Skipping GraphML import in processChatMessage to avoid issues. This needs to be refactored.");
-                const importResult = { success: true };
-                
-                if (importResult && importResult.success) {
-                  console.log("Successfully imported updated GraphML");
-                  
-                  // 中心性に関する推奨がある場合は、ユーザーに選択を促す
-                  if (result.recommended_centrality) {
-                    console.log("Centrality recommendation received:", result.recommended_centrality);
-                    return {
-                      success: true,
-                      content: result.content || "ネットワークの分析に基づいて中心性指標を推奨します。",
-                      recommended_centrality: result.recommended_centrality,
-                      // networkUpdateは含めない - ユーザーの確認を待つ
-                    };
-                  }
-                  
-                  // 中心性タイプが指定されていて、かつapply_centralityフラグがtrueの場合のみ適用
-                  if ((result.centrality_type || result.recommended_centrality) && result.apply_centrality) {
-                    let centralityType = "degree"; // デフォルト
-                    if (result.recommended_centrality) {
-                      centralityType = result.recommended_centrality;
-                    } else if (result.centrality_type) {
-                      centralityType = result.centrality_type;
-                    }
-                    
-                    // 中心性を適用するレスポンスを返す
-                    return {
-                      success: true,
-                      content: result.content || "中心性に基づいてノードのサイズが更新されました。",
-                      networkUpdate: {
-                        type: "centrality",
-                        centralityType: centralityType
-                      }
-                    };
-                  }
-                  
-                  // それ以外の場合は、通常のレスポンスを返す
-                  return {
-                    success: true,
-                    content: result.content || "GraphMLが正常に処理されました。",
-                    // networkUpdateは含めない
-                  };
-                }
-              }
-              
-              // GraphMLコンテンツがない場合は通常のレスポンスを返す
-              return {
-                success: true,
-                content: result.content || "処理が完了しました。",
-                networkUpdate: result.networkUpdate || null
-              };
-            }
-          }
-        } catch (graphmlError) {
-          console.error("Error in GraphML-based chat processing:", graphmlError);
-          // エラーが発生した場合は従来の方法にフォールバック
-          console.log("Falling back to traditional chat processing");
-        }
-      }
       
       // 従来の方法でチャットメッセージを処理
       const response = await networkAPI.useTool("process_chat_message", {
@@ -747,8 +567,7 @@ class MCPClient {
         };
       }
       
-      // ケース3: NetworkXMCP/tools/centrality_chat.pyのprocess_chat_messageからの応答
-      // 直接contentフィールドにデータがある場合
+      // ケース3: NetworkXMCPからの応答で、推奨中心性情報が含まれる場合
       if (result.success !== undefined && result.recommended_centrality !== undefined) {
         const centralityType = result.recommended_centrality || "degree";
         return {

@@ -724,68 +724,6 @@ def get_network_info(G):
             "error": f"Error getting network info: {str(e)}"
         }
 
-def detect_communities(G, algorithm="louvain"):
-    """
-    コミュニティ検出を行う
-    
-    Args:
-        G (nx.Graph): NetworkXグラフ
-        algorithm (str, optional): コミュニティ検出アルゴリズム
-        
-    Returns:
-        dict: コミュニティ検出結果
-    """
-    try:
-        communities = None
-        
-        if algorithm == "louvain":
-            try:
-                import community as community_louvain
-                partition = community_louvain.best_partition(G)
-                # コミュニティごとにノードをグループ化
-                community_dict = {}
-                for node, community_id in partition.items():
-                    if community_id not in community_dict:
-                        community_dict[community_id] = []
-                    community_dict[community_id].append(node)
-                communities = list(community_dict.values())
-            except ImportError:
-                # フォールバック: NetworkXのコミュニティ検出
-                communities = list(nx.community.greedy_modularity_communities(G))
-        elif algorithm == "girvan_newman":
-            # Girvan-Newmanアルゴリズム
-            communities = list(nx.community.girvan_newman(G))
-            # 最初の分割のみを使用
-            if communities:
-                communities = list(communities[0])
-        elif algorithm == "label_propagation":
-            # ラベル伝播アルゴリズム
-            communities = list(nx.community.label_propagation_communities(G))
-        else:
-            # デフォルト: モジュラリティベースのコミュニティ検出
-            communities = list(nx.community.greedy_modularity_communities(G))
-        
-        # コミュニティ情報を整形
-        community_info = []
-        for i, community in enumerate(communities):
-            community_info.append({
-                "id": i,
-                "nodes": list(community),
-                "size": len(community)
-            })
-        
-        return {
-            "success": True,
-            "algorithm": algorithm,
-            "num_communities": len(communities),
-            "communities": community_info
-        }
-    except Exception as e:
-        logger.error(f"Error detecting communities: {e}")
-        return {
-            "success": False,
-            "error": f"Error detecting communities: {str(e)}"
-        }
 
 def calculate_centrality(G, centrality_type="degree", **kwargs):
     """
